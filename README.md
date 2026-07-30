@@ -6,8 +6,8 @@ Hệ thống Backend cho nền tảng Thương mại Điện tử Thời trang t
 
 ## 🌟 Tính Năng Nổi Bật (Key Features)
 
-### 1. AI Stylist Engine & Gợi Ý Trang Phục Thông Minh
-- **Tư vấn Outfit cá nhân hóa:** Tích hợp OpenAI (GPT-4o-mini) và Pinecone Vector Database để tư vấn phối đồ theo hoàn cảnh (đi làm, hẹn hò, dự tiệc), thời tiết và sở thích cá nhân.
+### 🤖 1. AI Stylist Engine & Gợi Ý Trang Phục Thông Minh
+- **Tư vấn Outfit cá nhân hóa:** Tích hợp OpenAI (GPT-4o-mini) kết hợp dữ liệu PostgreSQL để tư vấn phối đồ theo hoàn cảnh (đi làm, hẹn hò, dự tiệc), thời tiết và sở thích cá nhân.
 - **Thuật toán gợi ý Size chuẩn xác:** Tự động tính toán và map chỉ số cơ thể người dùng (chiều cao, cân nặng, vòng 1/2/3) với bảng quy đổi size (`size_guides`).
 - **Chống AI Hallucination:** Áp dụng kỹ thuật Prompt Engineering với Few-shot learning, Fallback Heuristics và Fuzzy Matching đảm bảo 100% sản phẩm AI gợi ý luôn tồn tại trong kho và đúng danh mục (Top/Bottom).
 - **Quản lý Session & Cursor Pagination:** Quản lý lịch sử hội thoại chatbox AI với phân trang dạng cursor, tối ưu bộ nhớ và tốc độ phản hồi.
@@ -39,7 +39,7 @@ Hệ thống Backend cho nền tảng Thương mại Điện tử Thời trang t
 - **Core Framework:** Node.js, Express.js (v5.1)
 - **Database:** PostgreSQL (`pg` connection pool)
 - **Caching Layer:** Redis (v5)
-- **AI & Vector Search:** OpenAI API (GPT-4o-mini), `@pinecone-database/pinecone`
+- **AI Integration:** OpenAI API (GPT-4o-mini)
 - **Payment Gateway:** PayPal Checkout Server SDK (`@paypal/checkout-server-sdk`)
 - **Authentication:** Passport.js (Google OAuth 2.0), JSON Web Token (`jsonwebtoken`, `express-jwt`), Bcrypt
 - **Security:** `express-rate-limit`, CORS, Validator
