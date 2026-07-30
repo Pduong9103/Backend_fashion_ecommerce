@@ -4,33 +4,39 @@ Hệ thống Backend cho nền tảng Thương mại Điện tử Thời trang t
 
 ---
 
-## 🌟 Tính Năng Nổi Bật (Key Features)
+## 🌟 Các Tính Năng Đã Triển Khai (Implemented Features)
 
-### 🤖 1. AI Stylist Engine & Gợi Ý Trang Phục Thông Minh
-- **Tư vấn Outfit cá nhân hóa:** Tích hợp OpenAI (GPT-4o-mini) kết hợp dữ liệu PostgreSQL để tư vấn phối đồ theo hoàn cảnh (đi làm, hẹn hò, dự tiệc), thời tiết và sở thích cá nhân.
-- **Thuật toán gợi ý Size chuẩn xác:** Tự động tính toán và map chỉ số cơ thể người dùng (chiều cao, cân nặng, vòng 1/2/3) với bảng quy đổi size (`size_guides`).
-- **Chống AI Hallucination:** Áp dụng kỹ thuật Prompt Engineering với Few-shot learning, Fallback Heuristics và Fuzzy Matching đảm bảo 100% sản phẩm AI gợi ý luôn tồn tại trong kho và đúng danh mục (Top/Bottom).
-- **Quản lý Session & Cursor Pagination:** Quản lý lịch sử hội thoại chatbox AI với phân trang dạng cursor, tối ưu bộ nhớ và tốc độ phản hồi.
+### 🤖 1. AI Stylist Engine & Gợi Ý Trang Phục Thông Minh ("Luna")
+- **Tư vấn Outfit theo Ngữ cảnh:** Tích hợp OpenAI API (`gpt-4o-mini`) xử lý ngôn ngữ tự nhiên, tư vấn phối đồ dựa trên hoàn cảnh (đi làm, đi chơi, hẹn hò), thời tiết và sở thích.
+- **Thuật toán Chọn Size theo Chỉ số Cơ thể:** Tự động đối chiếu thông tin thể hình người dùng (chiều cao, cân nặng, vòng 1/2/3) với bảng quy đổi `size_guides` theo từng danh mục sản phẩm để đưa ra gợi ý size chính xác.
+- **Chống AI Hallucination bằng Fuzzy Matching:** Áp dụng kỹ thuật Prompt Engineering (Few-shot learning) kết hợp thuật toán `fuzzyMatchVariant` trong Backend để map tên sản phẩm AI tạo ra thành `variant_id` thực tế trong kho.
+- **Phân trang Lịch sử Chat AI (Cursor Pagination):** Quản lý phiên hội thoại chatbox AI hỗ trợ tải trước/tải thêm tin nhắn theo Cursor (`created_at`), giảm latency khi đọc lịch sử chat dài.
+- **User Behavior Tracking:** Ghi nhận chuỗi sự kiện hành vi (`view`, `add_to_cart`, `favorite`) vào bảng `user_behavior_events` làm dữ liệu đầu vào bổ trợ cho AI.
 
-### 2. Tối Ưu Hiệu Năng & Caching (Performance & Database)
-- **Redis Caching với Graceful Fallback:** Đệm dữ liệu danh mục sản phẩm và khuyến mãi bằng Redis. Tự động chuyển sang DB Query khi Redis gặp sự cố mà không làm gián đoạn hệ thống.
-- **PostgreSQL Materialized Views:** Tối ưu các câu lệnh thống kê doanh thu phức tạp (`mv_revenue_by_week`) với cơ chế làm mới bất đồng bộ `CONCURRENTLY` qua Cron Job.
-- **JSON/JSONB Aggregation:** Tận dụng sức mạnh của PostgreSQL (`json_agg`, `jsonb_build_object`) để aggregate dữ liệu phức tạp ngay tại tầng cơ sở dữ liệu.
+### ⚡ 2. Hiệu Năng & Cấu Trúc Dữ Liệu (Performance & Optimization)
+- **Redis Caching & Graceful Fallback:** Tự động đệm (Cache) danh mục và sản phẩm. Khi Redis gặp sự cố, hệ thống không bị crash mà tự động fallback query trực tiếp về PostgreSQL.
+- **PostgreSQL Materialized Views:** Sử dụng Materialized View (`mv_revenue_by_week`) phục vụ API báo cáo doanh thu theo tuần, làm mới bất đồng bộ qua Cron Job (`REFRESH MATERIALIZED VIEW CONCURRENTLY`).
+- **Phân Trang Linh Hoạt (Cursor & Offset):** Áp dụng Cursor-based Pagination cho danh sách sản phẩm Flash Sale/Newest để tối ưu truy vấn dữ liệu lớn, kết hợp Offset Pagination cho tìm kiếm & lọc sản phẩm.
+- **Tối ưu DB với JSON Aggregation:** Sử dụng `json_agg` và `jsonb_build_object` để aggregate dữ liệu phức tạp (favorites, order items, behavior events) ngay tại tầng cơ sở dữ liệu.
 
-### 3. Bảo Mật Đa Lớp & Xác Thực (Security & Authentication)
-- **Xác thực Đa phương thức:** Hỗ trợ đăng nhập truyền thống (JWT) và Google OAuth 2.0 (Passport.js).
-- **JWT Refresh Token Rotation:** Cơ chế Access Token ngắn hạn và Refresh Token tự động gia hạn an toàn.
-- **Dual-Layer Rate Limiting:** Bảo vệ hệ thống khỏi Spam/DDoS ở cả 2 tầng (Per-User & Per-IP), xử lý chuẩn hóa IP an toàn đằng sau Reverse Proxy (`x-forwarded-for`, IPv6 `::ffff:`).
-- **Phân quyền RBAC:** Middleware kiểm soát quyền hạn chặt chẽ giữa User, Guest và Admin.
+### 🛡️ 3. Bảo Mật & Quản Lý Xác Thực (Security & Auth)
+- **Xác thực Đa phương thức:** Đăng nhập truyền thống bằng JWT (Access Token ngắn hạn & Refresh Token Rotation) và đăng nhập bằng Google OAuth 2.0 (Passport.js).
+- **Xác thực OTP qua Email:** Quy trình Đăng ký tài khoản và Quên mật khẩu qua mã OTP có thời hạn (Nodemailer SMTP).
+- **Dual-Layer Rate Limiting:** Chống Brute-force/DDoS ở 2 cấp độ (Per-User & Per-IP), tích hợp hàm chuẩn hóa IP an toàn đằng sau Reverse Proxy (`x-forwarded-for`, IPv6 `::ffff:`).
+- **Phân quyền RBAC:** Middleware kiểm soát quyền truy cập chặt chẽ giữa Guest, User và Admin (`requireAdmin`, `requireUser`).
 
-### 4. Thanh Toán & Quản Lý Đơn Hàng (Payment & Orders)
-- **Tích hợp PayPal Checkout SDK:** Xử lý thanh toán quốc tế trực tiếp và qua Webhook.
-- **ACID Transactions:** Đảm bảo tính toàn vẹn dữ liệu cho luồng đặt hàng, giảm số lượng tồn kho và áp dụng mã giảm giá bằng PostgreSQL Multi-statement Transactions (`BEGIN...COMMIT/ROLLBACK`).
+### 💳 4. Đơn Hàng, Khuyến Mãi & Thanh Toán
+- **Thanh toán PayPal SDK & Webhook:** Tích hợp `@paypal/checkout-server-sdk` tạo giao dịch, bắt giữ tiền (`capture`) và nhận sự kiện tự động qua Webhook (`/payment/paypal/webhook`).
+- **ACID Transactions cho Đơn Hàng:** Đảm bảo tính toàn vẹn dữ liệu khi đặt hàng (trừ tồn kho, tính toán chiết khấu mã giảm giá) bằng PostgreSQL Multi-statement Transactions (`BEGIN...COMMIT/ROLLBACK`).
+- **Công cụ Tính Toán Khuyến Mãi (Promotions):** Cho phép người dùng thu thập mã, kiểm tra điều kiện áp dụng, xem trước chiết khấu (`preview`) phân bổ trên từng item trước khi chốt đơn.
+- **Địa Chỉ Giao Hàng & Đánh Giá Sản Phẩm:** Quản lý sổ địa chỉ (thiết lập mặc định) và gửi đánh giá (Rating, Comment, Hình ảnh) kèm kiểm tra quyền đánh giá dựa trên đơn hàng thực tế.
 
-### 5. Tiến Trình Chạy Ngầm (Automated Cron Jobs)
-- Tự động thu hồi Refresh Tokens và mã giảm giá (Promotions) hết hạn.
-- Tự động kiểm tra đơn hàng đã giao và gửi email/thông báo đánh giá sản phẩm.
-- Thực thi **Data Retention Policy** xóa sạch lịch sử chat AI quá hạn (90 - 365 ngày) định kỳ lúc 03:30 AM hàng ngày.
+### ⏰ 5. Tự Động Hóa Tiến Trình Ngầm (Node-Cron Jobs)
+- **Dọn dẹp Refresh Tokens:** Tự động xóa các token hết hạn hàng ngày.
+- **Tự động Hết hạn Promotions:** Kiểm tra và cập nhật trạng thái các mã giảm giá quá hạn mỗi 5 phút.
+- **Refresh Báo cáo Doanh thu:** Làm mới Materialized View báo cáo doanh thu mỗi giờ.
+- **Gửi Email Thông Báo Đơn Hàng:** Kiểm tra đơn hàng đã giao và gửi email nhắc đánh giá sản phẩm tự động mỗi 5 phút.
+- **Data Retention Policy:** Tự động dọn dẹp các bản ghi chat AI quá 90 ngày và gợi ý quá 365 ngày lúc 03:30 AM hàng ngày để tránh phình cơ sở dữ liệu.
 
 ---
 
@@ -39,11 +45,11 @@ Hệ thống Backend cho nền tảng Thương mại Điện tử Thời trang t
 - **Core Framework:** Node.js, Express.js (v5.1)
 - **Database:** PostgreSQL (`pg` connection pool)
 - **Caching Layer:** Redis (v5)
-- **AI Integration:** OpenAI API (GPT-4o-mini)
+- **AI Integration:** OpenAI API (`gpt-4o-mini`)
 - **Payment Gateway:** PayPal Checkout Server SDK (`@paypal/checkout-server-sdk`)
 - **Authentication:** Passport.js (Google OAuth 2.0), JSON Web Token (`jsonwebtoken`, `express-jwt`), Bcrypt
-- **Security:** `express-rate-limit`, CORS, Validator
-- **Utilities & Automation:** `node-cron`, Nodemailer (SMTP)
+- **Email Service:** Nodemailer (SMTP - Gmail)
+- **Security & Automation:** `express-rate-limit`, `node-cron`, CORS, Validator
 
 ---
 
@@ -51,26 +57,38 @@ Hệ thống Backend cho nền tảng Thương mại Điện tử Thời trang t
 
 ```text
 fashion-ecommerce-backend/
-├── config/                  # Cấu hình DB, Redis, Passport, OpenAI
+├── config/                  # Cấu hình DB, Redis, Passport, OpenAI, PayPal
 │   ├── db.js
 │   ├── redis.js
-│   └── passport.js
-├── controllers/             # Xử lý Logic Controller cho các Routes
+│   ├── passport.js
+│   └── paypal.js
+├── controllers/             # Xử lý Controller
 │   ├── adminController.js
 │   ├── aiRecommendationController.js
 │   ├── authController.js
+│   ├── publicController.js
 │   ├── userBehaviorController.js
 │   ├── cart/
+│   ├── categories/
+│   ├── favorite/
+│   ├── news/
 │   ├── orders/
 │   ├── payments/
-│   └── products/
-├── services/                # Nghiệp vụ logic chính (Business Logic Layer)
+│   ├── products/
+│   ├── promotions/
+│   ├── revenue/
+│   ├── suppliers/
+│   └── users/
+├── services/                # Tầng Xử lý Nghiệp vụ (Business Logic Layer)
 │   ├── aiRecommendationService.js  # Engine AI Stylist & Recommendation
 │   ├── authService.js
+│   ├── orderNotificationService.js # Tự động gửi mail thông báo
+│   ├── paymentService.js           # Xử lý tích hợp PayPal
 │   ├── productService.js
+│   ├── promotionServices.js        # Logic mã giảm giá
+│   ├── revenueService.js          # Thống kê doanh thu từ Materialized View
 │   ├── userCartService.js
-│   ├── userOrderServices.js
-│   └── ...
+│   └── userOrderServices.js
 ├── routes/                  # Định nghĩa API Routes
 │   ├── adminRoutes.js
 │   ├── aiChatRoutes.js
@@ -78,9 +96,8 @@ fashion-ecommerce-backend/
 │   ├── paymentsRoutes.js
 │   ├── publicRoutes.js
 │   └── userRoutes.js
-├── middleware/              # Authentication & Authorization Middlewares
+├── middleware/              # Middlewares (Auth, Rate Limit, Error Handler)
 ├── utils/                   # Error handling, Helper functions
-├── templates/               # Email HTML templates
 ├── cleanupRefreshTokens.js  # Task dọn dẹp refresh token
 ├── app.js                   # Application Entry Point
 └── package.json
@@ -93,7 +110,7 @@ fashion-ecommerce-backend/
 ### 1. Yêu Cầu Tiền Đề (Prerequisites)
 - **Node.js**: `>= v18.x`
 - **PostgreSQL**: `>= 14.x`
-- **Redis**: `>= 6.x` (Tùy chọn, ứng dụng có cơ chế Fallback nếu không có Redis)
+- **Redis**: `>= 6.x` (Tùy chọn, ứng dụng tự động Fallback nếu không kết nối được Redis)
 
 ### 2. Cài Đặt Ứng Dụng
 ```bash
@@ -106,7 +123,7 @@ npm install
 ```
 
 ### 3. Cấu Hình Biến Môi Trường (Environment Variables)
-Tạo file `.env` tại thư mục gốc của project (có thể sao chép từ file `.env.example`):
+Tạo file `.env` tại thư mục gốc của project (tham khảo template tại file `.env.example`):
 
 ```env
 PORT=3000
@@ -127,7 +144,7 @@ REDIS_PASSWORD=
 # JWT Secrets
 JWT_SECRET=your_super_secret_jwt_key
 
-# OpenAI API Key (Dùng cho AI Stylist)
+# OpenAI API Key
 OPENAI_API_KEY=sk-proj-your_openai_api_key
 
 # Google OAuth 2.0 Credentials
@@ -159,7 +176,7 @@ npm run dev
 ```bash
 npm start
 ```
-Ứng dụng sẽ lắng nghe tại cổng `http://localhost:3000` (hoặc PORT cấu hình trong `.env`).
+Ứng dụng sẽ chạy tại địa chỉ `http://localhost:3000`.
 
 ---
 
@@ -167,15 +184,23 @@ npm start
 
 | Phương thức | Endpoint | Mô tả | Phân quyền |
 | :--- | :--- | :--- | :--- |
-| **POST** | `/api/auth/register` | Đăng ký tài khoản người dùng mới | Public |
-| **POST** | `/api/auth/login` | Đăng nhập hệ thống & nhận JWT Tokens | Public |
+| **POST** | `/api/register` | Gửi mã OTP đăng ký tài khoản qua Email | Public |
+| **POST** | `/api/verify-otp` | Xác thực OTP & tạo tài khoản người dùng | Public |
+| **POST** | `/api/login` | Đăng nhập hệ thống & cấp phát JWT Tokens | Public |
+| **POST** | `/api/refresh` | Cấp mới Access Token bằng Refresh Token | Public |
 | **GET** | `/api/auth/google` | Đăng nhập bằng Google OAuth 2.0 | Public |
-| **POST** | `/api/chat-recommendations` | Chat với AI Stylist "Luna" nhận gợi ý outfit | User |
-| **GET** | `/user/cart` | Lấy thông tin giỏ hàng của người dùng | User |
-| **POST** | `/user/orders` | Tạo đơn hàng mới | User |
-| **POST** | `/payment/create-paypal-order` | Khởi tạo giao dịch thanh toán PayPal | User |
-| **GET** | `/admin/revenue` | Thống kê doanh thu (Sử dụng Materialized View) | Admin |
-| **POST** | `/admin/products` | Quản lý thêm/sửa/xóa sản phẩm | Admin |
+| **POST** | `/api/ai/chat/start` | Khởi tạo / tiếp tục phiên chat với AI Stylist | User |
+| **POST** | `/api/ai/chat` | Gửi tin nhắn chat & nhận gợi ý outfit từ AI "Luna" | User |
+| **GET** | `/api/ai/chat/load-messages` | Tải lịch sử chat (Cursor Pagination) | User |
+| **POST** | `/api/events` | Ghi nhận sự kiện hành vi người dùng (View, Favorite,...) | Public/User |
+| **GET** | `/public/home-products` | Lấy danh sách sản phẩm trang chủ (Cursor Pagination) | Public |
+| **POST** | `/user/orders` | Tạo đơn hàng mới (Multi-statement Transaction) | User |
+| **GET** | `/user/cart` | Lấy danh sách giỏ hàng của người dùng | User |
+| **POST** | `/payment/paypal/create` | Khởi tạo giao dịch thanh toán PayPal | User |
+| **POST** | `/payment/paypal/capture` | Bắt giữ (Capture) tiền giao dịch PayPal | User |
+| **POST** | `/payment/paypal/webhook` | Lắng nghe Webhook tự động từ PayPal | Public |
+| **GET** | `/admin/stats/revenue` | Báo cáo doanh thu (Sử dụng Materialized View) | Admin |
+| **GET** | `/admin/products` | Quản lý danh sách sản phẩm hệ thống | Admin |
 
 ---
 
