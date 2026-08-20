@@ -36,11 +36,9 @@ exports.updateItem = async(req, res, next) => {
     try {
         const userId = req.user && req.user.id;
         const itemId = req.params.id;
-        const { qty } = req.body || {};
+        const { qty, size, variant_id } = req.body || {};
 
-        if(qty === undefined) return res.status(400).json({ message: 'qty is required' });
-
-        const cart = await cartService.updateItem(userId, itemId, qty);
+        const cart = await cartService.updateItem(userId, itemId, { qty, size, variant_id });
         return res.status(200).json(cart);  
     } catch (error) {
         next(error);

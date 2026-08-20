@@ -6,7 +6,7 @@ exports.updateOrderStatus = async (req, res, next) => {
   const userId = req.user?.id;
   const role = req.user?.role;
   const orderId = req.params.id;
-  const { status, cancel_reason } = req.body;
+  const { status, cancel_reason, tracking_code, carrier_name, estimated_delivery_at } = req.body;
 
   try {
     if (role !== 'admin') {
@@ -18,7 +18,10 @@ exports.updateOrderStatus = async (req, res, next) => {
       role,
       orderId,
       status,
-      cancel_reason
+      cancel_reason,
+      tracking_code,
+      carrier_name,
+      estimated_delivery_at,
     });
 
     if (!updatedOrder) {

@@ -80,6 +80,21 @@ router.delete('/news/:id', requireAdmin, adminNewsController.removeNews);
 router.get('/stats/revenue', requireAdmin, adminRevenueController.revenue); // nếu k truyền s e thì mặc định là 12 tuần gấn nhất
 router.get('/stats/top-products', requireAdmin, adminRevenueController.topProducts);
 
+// Flash Sale Campaign Management
+const flashSaleController = require('../controllers/flashSaleController');
+router.get('/flash-sale/campaigns', requireAdmin, flashSaleController.getAllCampaigns);
+router.post('/flash-sale/campaigns', requireAdmin, flashSaleController.createCampaign);
+router.get('/flash-sale/campaigns/:id', requireAdmin, flashSaleController.getCampaignById);
+router.put('/flash-sale/campaigns/:id', requireAdmin, flashSaleController.updateCampaign);
+router.delete('/flash-sale/campaigns/:id', requireAdmin, flashSaleController.deleteCampaign);
+router.patch('/flash-sale/campaigns/:id/status', requireAdmin, flashSaleController.updateCampaignStatus);
+
+// Notifications
+const notificationController = require('../controllers/notificationController');
+router.get('/notifications', requireAdmin, notificationController.getNotifications);
+router.put('/notifications/:id/read', requireAdmin, notificationController.markAsRead);
+router.put('/notifications/read-all', requireAdmin, notificationController.markAllAsRead);
+
 module.exports = router;
 
 //vd get order by id: http://localhost:3000/admin/orders/698dafa5-c7b2-4388-8bd7-36dec041ad82

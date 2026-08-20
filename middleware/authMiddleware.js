@@ -37,14 +37,16 @@ const authMiddleware = (roles = []) => {
       if (error.name === 'TokenExpiredError') {
         // for protected routes (roles required), return expired info
         if (roles.length > 0) {
-          return res.status(401).json({ expired: true, error: { message: 'jwt expired' } });
+          res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token", error_description="The access token expired"');
+          return res.status(401).json({ expired: true, code: 'TOKEN_EXPIRED', error: { message: 'jwt expired' } });
         }
         // for public routes (e.g. login), don't block — set flag and continue
         req.tokenExpired = true;
         req.user = null;
         return next();
       }
-      return res.status(401).json({ error });
+      res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token", error_description="Invalid authentication token"');
+      return res.status(401).json({ error: error.message || 'Unauthorized', code: 'INVALID_TOKEN' });
     }
   };
 };

@@ -387,57 +387,57 @@ exports.addItem = async (userId, variantId, qty = 1, size = null) => {
     try {
         await client.query('BEGIN');
 
-    // ensure cart exists (reuses getOrCreateCart with same client if implemented)
-    const cartId = await getOrCreateCart(userId, client);
+        // ensure cart exists (reuses getOrCreateCart with same client if implemented)
+        const cartId = await getOrCreateCart(userId, client);
 
-    // get price & sale snapshot from product/variant
-    const pvRes = await client.query(
-        `SELECT p.price, COALESCE(p.sale_percent, 0) AS sale_percent, p.is_flash_sale, p.final_price
-         FROM product_variants pv
-         JOIN products p ON p.id = pv.product_id
-         WHERE pv.id = $1
-         LIMIT 1`,
-        [variantId]
-    );
-    if (pvRes.rows.length === 0) {
-        const e = new Error('Variant not found');
-        e.status = 404;
-        throw e;
-    }
-
-    const price = Number(pvRes.rows[0].price) || 0;
-    const salePercent = Number(pvRes.rows[0].sale_percent) || 0;
-    const isFlash = !!pvRes.rows[0].is_flash_sale;
-    const finalPrice = pvRes.rows[0].final_price != null ? Number(pvRes.rows[0].final_price) : null;
-    // per requirement: if flash sale active use current flash price, otherwise use product.price (not sale_percent)
-    let unitPrice;
-    if (isFlash && finalPrice !== null) {
-      unitPrice = finalPrice;
-    } else {
-      unitPrice = price;
-    }
-    unitPrice = Math.round(unitPrice * 100) / 100;
-
-    // check existing cart item for same variant + size
-    const exist = await client.query(
-        `SELECT id, qty FROM cart_items WHERE cart_id = $1 AND variant_id = $2 AND (size_snapshot IS NOT DISTINCT FROM $3) LIMIT 1`,
-        [cartId, variantId, size]
-    );
-
-    if (exist.rows.length) {
-        const newQty = Number(exist.rows[0].qty) + qty;
-        // update qty and refresh price_snapshot to current unitPrice (reflect flash price if any)
-        await client.query(
-            `UPDATE cart_items SET qty = $1, price_snapshot = $2, updated_at = NOW() WHERE id = $3`,
-            [newQty, unitPrice, exist.rows[0].id]
+        // get price & sale snapshot from product/variant
+        const pvRes = await client.query(
+            `SELECT p.price, COALESCE(p.sale_percent, 0) AS sale_percent, p.is_flash_sale, p.final_price
+            FROM product_variants pv
+            JOIN products p ON p.id = pv.product_id
+            WHERE pv.id = $1
+            LIMIT 1`,
+            [variantId]
         );
-    } else {
-        await client.query(
-            `INSERT INTO cart_items (id, cart_id, variant_id, qty, price_snapshot, size_snapshot, created_at)
-            VALUES (public.uuid_generate_v4(), $1, $2, $3, $4, $5, NOW())`,
-            [cartId, variantId, qty, unitPrice, size]
+        if (pvRes.rows.length === 0) {
+            const e = new Error('Variant not found');
+            e.status = 404;
+            throw e;
+        }
+
+        const price = Number(pvRes.rows[0].price) || 0;
+        const salePercent = Number(pvRes.rows[0].sale_percent) || 0;
+        const isFlash = !!pvRes.rows[0].is_flash_sale;
+        const finalPrice = pvRes.rows[0].final_price != null ? Number(pvRes.rows[0].final_price) : null;
+        // per requirement: if flash sale active use current flash price, otherwise use product.price (not sale_percent)
+        let unitPrice;
+        if (isFlash && finalPrice !== null) {
+        unitPrice = finalPrice;
+        } else {
+        unitPrice = price;
+        }
+        unitPrice = Math.round(unitPrice * 100) / 100;
+
+        // check existing cart item for same variant + size
+        const exist = await client.query(
+            `SELECT id, qty FROM cart_items WHERE cart_id = $1 AND variant_id = $2 AND (size_snapshot IS NOT DISTINCT FROM $3) LIMIT 1`,
+            [cartId, variantId, size]
         );
-    }
+
+        if (exist.rows.length) {
+            const newQty = Number(exist.rows[0].qty) + qty;
+            // update qty and refresh price_snapshot to current unitPrice (reflect flash price if any)
+            await client.query(
+                `UPDATE cart_items SET qty = $1, price_snapshot = $2, updated_at = NOW() WHERE id = $3`,
+                [newQty, unitPrice, exist.rows[0].id]
+            );
+        } else {
+            await client.query(
+                `INSERT INTO cart_items (id, cart_id, variant_id, qty, price_snapshot, size_snapshot, created_at)
+                VALUES (public.uuid_generate_v4(), $1, $2, $3, $4, $5, NOW())`,
+                [cartId, variantId, qty, unitPrice, size]
+            );
+        }
 
         // touch cart
         await client.query(`UPDATE carts SET updated_at = NOW() WHERE id = $1`, [cartId]);
@@ -476,76 +476,90 @@ exports.addItem = async (userId, variantId, qty = 1, size = null) => {
     }
 };
 
-exports.updateItem = async (userId, itemId, qty) => {
+exports.updateItem = async (userId, itemId, options = {}) => {
     if (!userId) throw Object.assign(new Error('Unauthorized'), { status: 401 });
-    qty = Number(qty);
-    if(!Number.isFinite(qty) || qty < 0){
-        throw Object.assign(new Error('Invalid quantity'), { status: 400 });
-    }
+    
+    // Support either updateItem(userId, itemId, qty) or updateItem(userId, itemId, { qty, size, variant_id })
+    const { qty, size, variant_id } = typeof options === 'object' && options !== null
+        ? options
+        : { qty: options, size: undefined, variant_id: undefined };
+
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
-        //đảm bảo giỏ hàng tồn tại
+        // đảm bảo item thuộc về user
         const q = `
-            SELECT ci.id, ci.cart_id, ci.variant_id
+            SELECT ci.id, ci.cart_id, ci.variant_id, ci.qty, ci.size_snapshot, ci.price_snapshot
             FROM cart_items ci
             JOIN carts c ON ci.cart_id = c.id
             WHERE ci.id = $1 AND c.user_id = $2 LIMIT 1
         `;
         const r = await client.query(q, [itemId, userId]);
-        if(r.rows.length == 0) throw Object.assign(new Error('Cart item not found'), { status: 404 });
+        if (r.rows.length === 0) throw Object.assign(new Error('Cart item not found'), { status: 404 });
 
-        const cartId = r.rows[0].cart_id;
-        const variantId = r.rows[0].variant_id;
+        const currentItem = r.rows[0];
+        const cartId = currentItem.cart_id;
+        const targetVariantId = variant_id || currentItem.variant_id;
+        const targetSize = size !== undefined ? size : currentItem.size_snapshot;
+        const targetQty = qty !== undefined ? Number(qty) : Number(currentItem.qty);
 
-        //lấy thông tin stock_qty item hiện tại
-        const stockRes = await client.query(
-            `SELECT pv.stock_qty
-            FROM product_variants pv
-            WHERE pv.id = $1 LIMIT 1`,
-            [variantId]
-        );
-        if(stockRes.rows.length === 0){
-            throw Object.assign(new Error('Cart item not found'), { status: 404 });
+        if (qty !== undefined && (!Number.isFinite(targetQty) || targetQty < 0)) {
+            throw Object.assign(new Error('Invalid quantity'), { status: 400 });
         }
 
-        const stockQty = Number(stockRes.rows[0].stock_qty);
-
-        let finalQty;
-        if(qty === 0 ){
+        if (targetQty === 0) {
             await client.query(`DELETE FROM cart_items WHERE id = $1`, [itemId]);
-            finalQty = 0;
-        }//nếu như số lượng mới nhập vào lớn hơn số lượng trong kho thì chỉ cập nhật bằng số lượng trong kho
-        else if (qty > stockQty){
-            finalQty = stockQty;
+        } else {
+            // Lấy thông tin stock_qty và giá của target variant
+            const pvRes = await client.query(
+                `SELECT pv.id, pv.stock_qty, p.price, COALESCE(p.sale_percent, 0) AS sale_percent, p.is_flash_sale, p.final_price
+                 FROM product_variants pv
+                 JOIN products p ON p.id = pv.product_id
+                 WHERE pv.id = $1 LIMIT 1`,
+                [targetVariantId]
+            );
+            if (pvRes.rows.length === 0) {
+                throw Object.assign(new Error('Variant not found'), { status: 404 });
+            }
 
-            console.debug('[updateItem] qty capped to stock', {
-                itemId,
-                requestedQty: qty,
-                stockQty,
-                cappedQty: finalQty
-            });
-            await client.query(
-                `UPDATE cart_items
-                SET qty = $1, updated_at = NOW()
-                WHERE id = $2`,
-                [stockQty, itemId]
+            const stockQty = Number(pvRes.rows[0].stock_qty) || 0;
+            const finalQty = targetQty > stockQty && stockQty > 0 ? stockQty : targetQty;
+
+            const price = Number(pvRes.rows[0].price) || 0;
+            const isFlash = !!pvRes.rows[0].is_flash_sale;
+            const flashPrice = pvRes.rows[0].final_price != null ? Number(pvRes.rows[0].final_price) : null;
+            const unitPrice = isFlash && flashPrice !== null ? flashPrice : price;
+
+            // Kiểm tra xem đã có item khác trong giỏ cùng (variant_id, size) chưa
+            const duplicateRes = await client.query(
+                `SELECT id, qty FROM cart_items 
+                 WHERE cart_id = $1 AND variant_id = $2 AND (size_snapshot IS NOT DISTINCT FROM $3) AND id != $4
+                 LIMIT 1`,
+                [cartId, targetVariantId, targetSize, itemId]
             );
+
+            if (duplicateRes.rows.length > 0) {
+                // Hợp nhất số lượng vào item đã có và xóa item hiện tại
+                const dupItem = duplicateRes.rows[0];
+                const mergedQty = Math.min(Number(dupItem.qty) + finalQty, stockQty);
+                await client.query(
+                    `UPDATE cart_items SET qty = $1, price_snapshot = $2, updated_at = NOW() WHERE id = $3`,
+                    [mergedQty, unitPrice, dupItem.id]
+                );
+                await client.query(`DELETE FROM cart_items WHERE id = $1`, [itemId]);
+            } else {
+                // Cập nhật trực tiếp item hiện tại
+                await client.query(
+                    `UPDATE cart_items 
+                     SET variant_id = $1, size_snapshot = $2, qty = $3, price_snapshot = $4, updated_at = NOW() 
+                     WHERE id = $5`,
+                    [targetVariantId, targetSize, finalQty, unitPrice, itemId]
+                );
+            }
         }
-        else{
-            finalQty = qty;
-            await client.query(
-                `UPDATE cart_items
-                SET qty = $1, updated_at = NOW()
-                WHERE id = $2`,
-                [qty, itemId]
-            );
-        }
-        await client.query(
-            `UPDATE carts SET updated_at = NOW() WHERE id = $1`,
-            [cartId]
-        );
+
+        await client.query(`UPDATE carts SET updated_at = NOW() WHERE id = $1`, [cartId]);
         await client.query('COMMIT');
 
         const cartQ = `
@@ -567,7 +581,7 @@ exports.updateItem = async (userId, itemId, qty) => {
         const cartData = buildCartData(cartId, freshCartRes.rows);
 
         // Write cache một lần thôi
-        await updateCartCacheWithData(userId, updatedCart);
+        await updateCartCacheWithData(userId, cartData);
 
         return cartData;
     }catch(err){

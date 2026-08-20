@@ -20,6 +20,13 @@ router.get('/news/:id', publicController.getNewsById);
 //top brands 
 router.get('/top-brands', publicController.getTopBrandsThisQuarter);
 
+// Flash Sale public route
+const flashSaleController = require('../controllers/flashSaleController');
+router.get('/flash-sale/current', flashSaleController.getCurrentActiveFlashSale);
+
+// Newsletter subscription
+router.post('/newsletter/subscribe', publicController.subscribeNewsletter);
+
 module.exports = router;
 
 //lấy sp supplier dùng offset pagination (page, limit)

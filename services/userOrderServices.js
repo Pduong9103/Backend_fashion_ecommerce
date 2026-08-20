@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 
 const promotionService = require('./userPromotionService');
+const notificationService = require('./notificationService');
 
 
 // Chính sách áp voucher: áp cho 1 item đủ điều kiện có line_base cao nhất
@@ -48,7 +49,8 @@ exports.createOrder = async (userId, orderData) => {
     const variantIds = items.map(i => i.variant_id);
     const { rows: variantRows } = await client.query(
       `SELECT pv.id AS variant_id, pv.product_id, pv.stock_qty, pv.sold_qty,
-              p.name AS product_name, COALESCE(p.final_price, p.price)::numeric AS unit_price
+              p.name AS product_name, COALESCE(p.final_price, p.price)::numeric AS unit_price,
+              p.is_flash_sale
        FROM product_variants pv
        JOIN products p ON p.id = pv.product_id
        WHERE pv.id = ANY($1::uuid[]) FOR UPDATE`,
@@ -58,7 +60,23 @@ exports.createOrder = async (userId, orderData) => {
     const variantMap = new Map();
     for (const v of variantRows) variantMap.set(String(v.variant_id), v);
 
-    // validate stock & compute totals
+    // Khóa slot Flash Sale chiến dịch đang active (FOR UPDATE - chống overselling tuyệt đối)
+    const productIds = Array.from(new Set(variantRows.map(v => v.product_id)));
+    const { rows: flashSaleRows } = await client.query(
+      `SELECT fsi.id AS flash_item_id, fsi.product_id, fsi.flash_price, fsi.discount_percent,
+              fsi.flash_quota, fsi.sold_count, fsi.purchase_limit_per_user,
+              p.name AS product_name
+       FROM flash_sale_items fsi
+       JOIN flash_sale_campaigns fsc ON fsi.campaign_id = fsc.id
+       JOIN products p ON fsi.product_id = p.id
+       WHERE fsi.product_id = ANY($1::uuid[]) AND fsc.status = 'active'
+       FOR UPDATE`,
+      [productIds]
+    );
+    const flashMap = new Map();
+    for (const f of flashSaleRows) flashMap.set(String(f.product_id), f);
+
+    // validate stock, flash quota & compute totals
     let subtotal = 0;
     const orderItemsData = [];
     for (const it of items) {
@@ -67,9 +85,30 @@ exports.createOrder = async (userId, orderData) => {
         throw Object.assign(new Error(`Variant not found: ${it.variant_id}`), { status: 400 });
       }
       if (v.stock_qty < it.quantity) {
-        throw Object.assign(new Error(`Insufficient stock for variant ${it.variant_id}`), { status: 400 });
+        throw Object.assign(new Error(`Sản phẩm "${v.product_name}" không đủ số lượng tồn kho (còn ${v.stock_qty}).`), { status: 400 });
       }
-      const unitPrice = Number(v.unit_price) || 0;
+
+      let unitPrice = Number(v.unit_price) || 0;
+      const flashItem = flashMap.get(String(v.product_id));
+
+      if (flashItem) {
+        // 1. Kiểm tra giới hạn mua mỗi người
+        if (flashItem.purchase_limit_per_user && it.quantity > flashItem.purchase_limit_per_user) {
+          throw Object.assign(
+            new Error(`Sản phẩm "${flashItem.product_name}" chỉ được mua tối đa ${flashItem.purchase_limit_per_user} sản phẩm trong đợt Flash Sale.`),
+            { status: 400 }
+          );
+        }
+        // 2. Kiểm tra giới hạn quota Flash Sale chống vượt mức
+        if (flashItem.sold_count + it.quantity > flashItem.flash_quota) {
+          throw Object.assign(
+            new Error(`Sản phẩm "${flashItem.product_name}" đã hết suất Flash Sale (${flashItem.sold_count}/${flashItem.flash_quota}).`),
+            { status: 400 }
+          );
+        }
+        unitPrice = Number(flashItem.flash_price) || unitPrice;
+      }
+
       const lineTotal = round2(unitPrice * it.quantity);
       subtotal += lineTotal;
       orderItemsData.push({
@@ -82,7 +121,8 @@ exports.createOrder = async (userId, orderData) => {
         size_snapshot: it.size || null,
         final_price: lineTotal, // will be reduced if promo applies
         promo_applied: false,
-        promo_discount: 0
+        promo_discount: 0,
+        flash_item_id: flashItem?.flash_item_id || null,
       });
     }
 
@@ -154,13 +194,18 @@ exports.createOrder = async (userId, orderData) => {
     let final_amount = round2(subtotal - discount + Number(shipping_fee || 0));
     if (final_amount < 0) final_amount = 0;
 
+    // Sinh mã đơn hàng chuẩn Haute Couture (Ví dụ: HS-C89D6469)
+    const crypto = require('crypto');
+    const orderCode = 'HS-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+
     // insert order (use shipping_address_snapshot field)
     const orderInsert = await client.query(
-      `INSERT INTO orders (user_id, total_amount, discount_amount, shipping_fee, final_amount, payment_status, order_status, shipping_address_snapshot, payment_method, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'unpaid', 'pending', $6, $7, NOW(), NOW())
-       RETURNING id, created_at`,
+      `INSERT INTO orders (user_id, order_code, total_amount, discount_amount, shipping_fee, final_amount, payment_status, order_status, shipping_address_snapshot, payment_method, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'unpaid', 'pending', $7, $8, NOW(), NOW())
+       RETURNING id, order_code, created_at`,
       [
         userId,
+        orderCode,
         round2(subtotal),
         round2(discount),
         Number(shipping_fee),
@@ -170,8 +215,9 @@ exports.createOrder = async (userId, orderData) => {
       ]
     );
     const orderId = orderInsert.rows[0].id;
+    const finalOrderCode = orderInsert.rows[0].order_code || orderCode;
 
-    // insert order_items and update stock
+    // insert order_items and update stock & lock flash sale slot
     for (const oi of orderItemsData) {
       await client.query(
         `INSERT INTO order_items (order_id, variant_id, qty, unit_price, name_snapshot, color_snapshot, size_snapshot, final_price, promo_applied)
@@ -188,6 +234,17 @@ exports.createOrder = async (userId, orderData) => {
          WHERE id = $2`,
         [oi.qty, oi.variant_id]
       );
+
+      // Khóa slot Flash Sale ngay lập tức (Lock slot in Campaign)
+      if (oi.flash_item_id) {
+        await client.query(
+          `UPDATE flash_sale_items
+           SET sold_count = sold_count + $1,
+               updated_at = NOW()
+           WHERE id = $2`,
+          [oi.qty, oi.flash_item_id]
+        );
+      }
     }
 
     // If promotion applied, increment used_count and insert user_promotion 'used' record (in same transaction)
@@ -238,9 +295,34 @@ exports.createOrder = async (userId, orderData) => {
 
     await client.query('COMMIT');
 
+    // Gửi thông báo cho Khách hàng và Admin (Asynchronous non-blocking)
+    try {
+      notificationService.createNotification({
+        userId,
+        role: 'customer',
+        type: 'order',
+        title: 'Đặt hàng thành công!',
+        message: `Đơn hàng ${finalOrderCode} trị giá ${new Intl.NumberFormat('vi-VN').format(final_amount)} ₫ đã được tiếp nhận.`,
+        linkUrl: `/customer/order/${orderId}`,
+        metadata: { order_id: orderId, order_code: finalOrderCode, final_amount, status: 'pending' },
+      }).catch(() => {});
+
+      notificationService.createNotification({
+        role: 'admin',
+        type: 'order',
+        title: 'Đơn hàng mới phát sinh!',
+        message: `Đơn hàng mới ${finalOrderCode} trị giá ${new Intl.NumberFormat('vi-VN').format(final_amount)} ₫ vừa được đặt.`,
+        linkUrl: `/admin/order/${orderId}`,
+        metadata: { order_id: orderId, order_code: finalOrderCode, final_amount, user_id: userId },
+      }).catch(() => {});
+    } catch (notifErr) {
+      console.error('[createOrder] notification error:', notifErr);
+    }
+
     // return basic order summary (include per-item promo_discount for client)
     return {
       id: orderId,
+      order_code: finalOrderCode,
       total_amount: round2(subtotal),
       discount_amount: round2(discount),
       shipping_fee: Number(shipping_fee),
@@ -327,6 +409,7 @@ exports.getOrders = async ({ userId, role, page = 1, limit = 20, status, from, t
     const query = `
       SELECT
         o.id,
+        o.order_code,
         o.user_id,
         o.total_amount,
         o.discount_amount,
@@ -335,6 +418,11 @@ exports.getOrders = async ({ userId, role, page = 1, limit = 20, status, from, t
         o.order_status,
         o.payment_method,
         o.payment_status,
+        o.tracking_code,
+        o.carrier_name,
+        o.estimated_delivery_at,
+        o.delivered_at,
+        o.return_status,
         o.created_at,
         u.full_name,
         u.name,
@@ -380,6 +468,7 @@ exports.getOrderById = async({ userId, role, orderId})=>{
         let query = `
             SELECT 
                 o.id, 
+                o.order_code,
                 o.user_id, 
                 o.total_amount,
                 o.discount_amount,
@@ -389,6 +478,14 @@ exports.getOrderById = async({ userId, role, orderId})=>{
                 o.payment_status,
                 o.payment_method,
                 o.shipping_address_snapshot,
+                o.tracking_code,
+                o.carrier_name,
+                o.estimated_delivery_at,
+                o.delivered_at,
+                o.return_status,
+                o.return_reason,
+                o.return_requested_at,
+                o.cancel_reason,
                 o.created_at,
                 o.updated_at,
                 json_agg(oi.*) AS items
@@ -498,7 +595,7 @@ exports.cancelOrder = async ({ userId, role, orderId, reason }) => {
         if (!['pending', 'confirmed'].includes(currentStatus)) {
             throw new Error('Order can only be cancelled in pending or confirmed status');
         }
-        // Hoàn lại stock
+        // Hoàn lại stock và mở khóa slot Flash Sale (nếu có)
         const items = await client.query(
             `SELECT variant_id, qty FROM order_items WHERE order_id = $1`,
             [orderId]
@@ -507,8 +604,19 @@ exports.cancelOrder = async ({ userId, role, orderId, reason }) => {
             await client.query(
                 `UPDATE product_variants 
                  SET stock_qty = stock_qty + $1,
-                     sold_qty = GREATEST(COALESCE(sold_qty, 0) - $1, 0)
+                     sold_qty = GREATEST(COALESCE(sold_qty, 0) - $1, 0),
+                     updated_at = NOW()
                  WHERE id = $2`,
+                [item.qty, item.variant_id]
+            );
+
+            // Mở khóa slot Flash Sale
+            await client.query(
+                `UPDATE flash_sale_items fsi
+                 SET sold_count = GREATEST(fsi.sold_count - $1, 0),
+                     updated_at = NOW()
+                 FROM product_variants pv
+                 WHERE pv.id = $2 AND fsi.product_id = pv.product_id`,
                 [item.qty, item.variant_id]
             );
         }

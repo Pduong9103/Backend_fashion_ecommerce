@@ -16,10 +16,11 @@ const rateLimit = require('express-rate-limit');
 const aiChatRoutes = require('./routes/aiChatRoutes');
 const { authMiddleware } = require('./middleware/authMiddleware');
 
-const pool = require('./config/db');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 
+app.use(cookieParser());
 // chỉ dùng express.json once, giới hạn body size
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -30,9 +31,24 @@ connectRedis().catch((err) => {
     console.warn('[Redis] App will continue without caching');
 });
 
-// CORS
+// CORS - Hỗ trợ cả localhost và DevTunnels
+const allowedOrigins = [
+  process.env.FE_URL,
+  'http://localhost:5000',
+  'http://localhost:3000',
+  'http://127.0.0.1:5000',
+  'http://127.0.0.1:3000',
+  'https://pkw69kmb-5000.asse.devtunnels.ms',
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FE_URL || 'http://localhost:5000',
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.devtunnels.ms')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   credentials: true,
 }));
 
@@ -132,6 +148,18 @@ cron.schedule('*/5 * * * *', async () => {
     console.log('[cron] checkAndSendForDeliveredOrders done');
   } catch (e) {
     console.error('[cron] checkAndSendForDeliveredOrders error', e && e.stack ? e.stack : e);
+  }
+});
+
+// Flash Sale Lifecycle Sync Cronjob (mỗi 1 phút)
+const flashSaleService = require('./services/flashSaleService');
+const notificationService = require('./services/notificationService');
+cron.schedule('* * * * *', async () => {
+  try {
+    await flashSaleService.syncFlashSaleStatusCron();
+    await notificationService.autoConfirmPendingOrders();
+  } catch (e) {
+    console.error('[cron] syncFlashSaleStatusCron / autoConfirmPendingOrders error', e);
   }
 });
 

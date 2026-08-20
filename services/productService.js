@@ -28,8 +28,6 @@ exports.getProducts = async function ({
 
     const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-
         let categoryIds = null;
         if (category_id) {
             const catRes = await client.query(
@@ -137,8 +135,6 @@ exports.getProducts = async function ({
         }
 
         const qRes = await client.query(sql, params);
-        await client.query('COMMIT');
-
         const rows = qRes.rows || [];
         const hasMore = rows.length > Number(limit);
         const products = hasMore ? rows.slice(0, limit) : rows;
@@ -155,7 +151,6 @@ exports.getProducts = async function ({
             hasMore
         };
     } catch (err) {
-        await client.query('ROLLBACK');
         throw err;
     } finally {
         client.release();

@@ -203,7 +203,33 @@ exports.getNewsById = async (req, res, next) => {
     const item = await newsService.getNewsById(id);
     if (!item) return res.status(404).json({ error: 'Not found' });
 
-    // ensure content_blocks parsed as JSON (pg returns jsonb already)
+    let blocks = item.content_blocks;
+    if (typeof blocks === 'string') {
+      try { blocks = JSON.parse(blocks); } catch (e) { blocks = []; }
+    }
+
+    // Populate embedded products if any
+    const productEmbeds = (blocks || []).filter(b => b.type === 'product_embed' && b.product_id);
+    if (productEmbeds.length > 0) {
+      const pids = productEmbeds.map(b => b.product_id);
+      const prodRes = await pool.query(`
+        SELECT p.id, p.name, p.price, p.sale_percent, p.final_price,
+          (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.position ASC LIMIT 1) as image_url,
+          c.name as category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.id = ANY($1)
+      `, [pids]);
+      const prodMap = new Map(prodRes.rows.map(r => [r.id, r]));
+      blocks = blocks.map(b => {
+        if (b.type === 'product_embed' && prodMap.has(b.product_id)) {
+          return { ...b, product: prodMap.get(b.product_id) };
+        }
+        return b;
+      });
+      item.content_blocks = blocks;
+    }
+
     return res.json({ success: true, news: item });
   } catch (err) {
     next(err);
@@ -225,5 +251,17 @@ exports.getTopBrandsThisQuarter = async (req, res, next) => {
   catch (err) {
     console.error('[getTopBrandsThisQuarter]', err);
     res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
+const newsletterService = require('../services/newsletterService');
+
+exports.subscribeNewsletter = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const result = await newsletterService.subscribeNewsletter(email);
+    return res.status(200).json(result);
+  } catch (err) {
+    next(err);
   }
 };

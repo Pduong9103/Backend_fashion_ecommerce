@@ -92,6 +92,45 @@ exports.cancelOrder = async(req, res)=>{
     }
 };
 
+exports.confirmReceived = async (req, res, next) => {
+    const userId = req.user?.id;
+    const orderId = req.params.id;
+
+    try {
+        const coreOrderService = require('../../services/orderService');
+        const updated = await coreOrderService.confirmReceivedByUser({ userId, orderId });
+        return res.json({
+            message: 'Xác nhận nhận hàng thành công',
+            order: updated
+        });
+    } catch (error) {
+        if (error.message.includes('Access denied')) {
+            return res.status(403).json({ message: error.message });
+        }
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+exports.requestReturn = async (req, res, next) => {
+    const userId = req.user?.id;
+    const orderId = req.params.id;
+    const { return_reason } = req.body || {};
+
+    try {
+        const coreOrderService = require('../../services/orderService');
+        const updated = await coreOrderService.requestReturnByUser({ userId, orderId, return_reason });
+        return res.json({
+            message: 'Yêu cầu đổi trả đã được gửi thành công',
+            order: updated
+        });
+    } catch (error) {
+        if (error.message.includes('Access denied') || error.message.includes('Chỉ có thể')) {
+            return res.status(400).json({ message: error.message });
+        }
+        return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 exports.addReview = async(req, res, next) => {
     try {
         const userId = req.user?.id;

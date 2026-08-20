@@ -21,8 +21,6 @@ const cleanupExpiredRefreshTokens = async () => {
   }
 };
 
-// Nếu bạn import file để scheduling, dùng exported function.
-// Nếu chạy trực tiếp: node cleanupRefreshTokens.js
 if (require.main === module) {
   cleanupExpiredRefreshTokens()
     .then(() => process.exit(0))

@@ -5,7 +5,21 @@ const supplierService = require('../../services/supplierService');
 exports.createSupplier = async (req, res) => {
   console.log('createSupplier - req.body =', req.body);
   try {
-    const { name, contact_email, phone, logo_url } = req.body;
+    const {
+      name,
+      contact_email,
+      phone,
+      logo_url,
+      tax_code,
+      address,
+      contact_person,
+      tier,
+      website,
+      bank_account,
+      status,
+      notes,
+    } = req.body;
+
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -15,24 +29,50 @@ exports.createSupplier = async (req, res) => {
     if (phone && !validator.isMobilePhone(phone, 'vi-VN')) {
       return res.status(400).json({ message: 'Invalid phone number' });
     }
-    const newSupplier = await supplierService.createSupplier({ name, contact_email, phone, logo_url});
+
+    const newSupplier = await supplierService.createSupplier({
+      name,
+      contact_email,
+      phone,
+      logo_url,
+      tax_code,
+      address,
+      contact_person,
+      tier,
+      website,
+      bank_account,
+      status,
+      notes,
+    });
+
     return res.status(200).json({ message: 'Supplier created successfully', supplier: newSupplier });
-  }catch (error) {
-    console.error('UpdateSupplier error:', error);
-    if(error.message === 'Supplier not found'){
-      return res.status(404).json({ message: error.message });
-    }
+  } catch (error) {
+    console.error('CreateSupplier error:', error);
     return res.status(500).json({
       message: error.message || 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
 exports.updateSupplier = async (req, res) => {
-  try{
+  try {
     const { id } = req.params;
-    const { name, contact_email, phone, logo_url } = req.body;
+    const {
+      name,
+      contact_email,
+      phone,
+      logo_url,
+      tax_code,
+      address,
+      contact_person,
+      tier,
+      website,
+      bank_account,
+      status,
+      notes,
+    } = req.body;
+
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -43,65 +83,78 @@ exports.updateSupplier = async (req, res) => {
       return res.status(400).json({ message: 'Invalid phone number' });
     }
 
-    const updatedSupplier = await supplierService.updateSupplier(id, { name, contact_email, phone, logo_url });
+    const updatedSupplier = await supplierService.updateSupplier(id, {
+      name,
+      contact_email,
+      phone,
+      logo_url,
+      tax_code,
+      address,
+      contact_person,
+      tier,
+      website,
+      bank_account,
+      status,
+      notes,
+    });
+
     return res.status(200).json({ message: 'Supplier updated successfully', supplier: updatedSupplier });
-  }catch (error) {
+  } catch (error) {
     console.error('updateSupplier error:', error);
     if (error.message === 'Supplier not found') {
       return res.status(404).json({ message: error.message });
     }
     return res.status(500).json({
       message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
+      error: process.env.NODE_ENV === 'development' ? error.message : {},
     });
   }
 };
 
 exports.deleteSupplier = async (req, res) => {
-  try{
+  try {
     const { id } = req.params;
-    const { cascade } = req.query; // Lấy param cascade
+    const { cascade } = req.query;
     const deletedSupplier = await supplierService.deleteSupplier(id, cascade === 'true');
     return res.status(200).json({ message: 'Supplier deleted successfully', supplier: deletedSupplier });
-  }catch (error) {
+  } catch (error) {
     console.error('deleteSupplier error:', error);
     if (error.message === 'Supplier not found' || error.message === 'Supplier has associated products') {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({
       message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
+      error: process.env.NODE_ENV === 'development' ? error.message : {},
     });
   }
 };
 
-exports.getSupplier = async (req, res)=> {
-  try{
+exports.getSupplier = async (req, res) => {
+  try {
     const suppliers = await supplierService.getSuppliers();
-    return res.status(200).json({ message: 'Suppliers retrieved successfully', suppliers});
-  }catch(error){
+    return res.status(200).json({ message: 'Suppliers retrieved successfully', suppliers });
+  } catch (error) {
     console.error('getSuppliers error:', error);
     return res.status(500).json({
       message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
-    })
+      error: process.env.NODE_ENV === 'development' ? error.message : {},
+    });
   }
 };
 
-exports.getSupplierById = async (req, res)=>{
-  try{
+exports.getSupplierById = async (req, res) => {
+  try {
     const { id } = req.params;
     const supplier = await supplierService.getSupplierById(id);
-    if(!supplier){
-      return res.status(404).json({ message: 'Supplier not found'});
+    if (!supplier) {
+      return res.status(404).json({ message: 'Supplier not found' });
     }
-    return res.status(200).json({ message: 'Supplier retrieved successfully', supplier});
-  
-  }catch(error){
+    return res.status(200).json({ message: 'Supplier retrieved successfully', supplier });
+  } catch (error) {
     console.error('getSupplierById error:', error);
     return res.status(500).json({
       message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
-    })
+      error: process.env.NODE_ENV === 'development' ? error.message : {},
+    });
   }
 };

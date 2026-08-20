@@ -1,240 +1,263 @@
 <!doctype html>
 <html lang="vi">
-
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Đơn hàng đã được giao — HS Fashion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xác Nhận Kiện Hàng Đã Giao Thành Công — HS ATELIER</title>
   <style>
-    :root {
-      --brand: #ff7b00;
-      --bg: #f6f7f9;
-      --card: #ffffff;
-      --muted: #6b6b6b
-    }
-
     body {
       margin: 0;
-      background: var(--bg);
-      font-family: Inter, Arial, Helvetica, sans-serif;
-      color: #222
+      padding: 0;
+      background-color: #F8F7F4;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #121212;
+      -webkit-font-smoothing: antialiased;
     }
-
-    .container {
-      max-width: 720px;
-      margin: 28px auto;
-      padding: 18px
-    }
-
-    .card {
-      background: var(--card);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08)
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 18px 20px;
-      background: linear-gradient(90deg, rgba(255, 123, 0, 0.06), transparent)
-    }
-
-    .logo {
-      width: 56px;
-      height: 56px;
-      border-radius: 10px;
-      background: var(--brand);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 700;
-      font-size: 18px
-    }
-
-    .title {
-      font-size: 16px;
-      margin: 0;
-      color: var(--brand)
-    }
-
-    .subtitle {
-      margin: 2px 0 0;
-      color: var(--muted);
-      font-size: 13px
-    }
-
-    .body {
-      padding: 20px
-    }
-
-    .greet {
-      font-size: 15px;
-      margin: 0 0 6px
-    }
-
-    .info {
-      font-size: 14px;
-      color: var(--muted);
-      margin: 0 0 16px
-    }
-
-    .items {
-      border-top: 1px solid #f0f0f0;
-      padding-top: 12px
-    }
-
-    .item {
-      display: flex;
-      gap: 12px;
-      padding: 12px 0;
-      border-bottom: 1px dashed #f3f3f3;
-      align-items: center
-    }
-
-    .thumb {
-      width: 72px;
-      height: 72px;
-      border-radius: 8px;
-      object-fit: cover;
-      background: #fafafa
-    }
-
-    .meta {
-      flex: 1
-    }
-
-    .name {
-      font-size: 14px;
-      color: #111;
-      margin: 0
-    }
-
-    .meta-small {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 6px
-    }
-
-    .price {
-      min-width: 120px;
-      text-align: right;
-      font-weight: 600
-    }
-
-    /* UPDATED: keep totals on the right and align label to baseline of amount */
-    .totals {
+    .wrapper {
       width: 100%;
-      display: flex;
-      justify-content: flex-end;
-      align-items: baseline;
-      /* align label and amount on the same baseline */
-      gap: 12px;
-      padding-top: 12px;
-      margin-top: 6px;
+      background-color: #F8F7F4;
+      padding: 40px 16px;
+      box-sizing: border-box;
     }
-
-    .label {
-      color: var(--muted);
-      font-size: 13px;
-      white-space: nowrap;
-      /* slightly lower the label to sit visually on the same line as big amount */
-      transform: translateY(4px);
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      background-color: #FFFFFF;
+      border: 1px solid rgba(18, 18, 18, 0.08);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+      overflow: hidden;
     }
-
-    .amount {
-      font-size: 18px;
-      font-weight: 800;
-      margin-left: 6px;
-    }
-
-    .cta {
-      margin: 8px 0px;
-      font-weight: 700;
-      display: inline-block;
-      color: var(--brand);
-      text-decoration: none;
-    }
-
-    .footer {
-      padding: 14px 20px;
-      border-top: 1px solid #f0f0f0;
-      background: #fff;
+    .header {
+      background-color: #121212;
+      color: #F8F7F4;
+      padding: 36px 32px 28px;
       text-align: center;
-      color: var(--muted);
-      font-size: 13px
+      border-bottom: 2px solid #D4AF37;
     }
-
-    @media (max-width:520px) {
-      .item {
-        gap: 10px
-      }
-
-      .thumb {
-        width: 56px;
-        height: 56px
-      }
-
-      .price {
-        min-width: 86px
-      }
-
-      .totals {
-        justify-content: flex-end;
-        gap: 8px
-      }
-
-      .label {
-        transform: translateY(2px);
-        font-size: 12px
-      }
-
-      .amount {
-        font-size: 16px
-      }
+    .brand-tag {
+      font-size: 10px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #D4AF37;
+      margin-bottom: 8px;
+      display: block;
+      font-weight: 600;
+    }
+    .brand-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 26px;
+      letter-spacing: 2px;
+      margin: 0;
+      font-weight: 300;
+      color: #FFFFFF;
+    }
+    .hero-badge {
+      display: inline-block;
+      margin-top: 18px;
+      padding: 5px 16px;
+      background: rgba(212, 175, 55, 0.15);
+      border: 1px solid #D4AF37;
+      color: #D4AF37;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .content {
+      padding: 36px 32px;
+    }
+    .greeting {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #2C2C2C;
+      margin: 0 0 16px;
+    }
+    .greeting strong {
+      color: #121212;
+    }
+    .kpi-table {
+      width: 100%;
+      background: #FAF9F6;
+      border: 1px solid rgba(18, 18, 18, 0.06);
+      margin: 24px 0 28px;
+      border-collapse: collapse;
+    }
+    .kpi-td {
+      padding: 14px 16px;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(18, 18, 18, 0.05);
+    }
+    .kpi-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #8C827A;
+      margin-bottom: 4px;
+      display: block;
+      font-weight: 600;
+    }
+    .kpi-val {
+      font-size: 13px;
+      color: #121212;
+      font-weight: 500;
+      margin: 0;
+    }
+    .section-heading {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #8C827A;
+      font-weight: 600;
+      margin: 28px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(18, 18, 18, 0.08);
+    }
+    .items-container {
+      margin-bottom: 24px;
+    }
+    .total-box {
+      background: #FAF9F6;
+      padding: 16px 20px;
+      border: 1px solid rgba(18, 18, 18, 0.06);
+      margin-top: 20px;
+      text-align: right;
+    }
+    .total-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #736B63;
+      margin-right: 12px;
+    }
+    .total-amount {
+      font-size: 20px;
+      color: #121212;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .cta-area {
+      text-align: center;
+      margin: 36px 0 24px;
+    }
+    .btn-cta {
+      display: inline-block;
+      padding: 14px 32px;
+      background-color: #121212;
+      color: #F8F7F4 !important;
+      text-decoration: none;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    .appreciation {
+      padding: 20px;
+      background: #FAF9F6;
+      border-left: 2px solid #D4AF37;
+      font-size: 12px;
+      color: #57514B;
+      line-height: 1.7;
+      margin-top: 28px;
+      font-style: italic;
+    }
+    .footer {
+      background-color: #FAF9F6;
+      border-top: 1px solid rgba(18, 18, 18, 0.08);
+      padding: 24px 32px;
+      text-align: center;
+      font-size: 11px;
+      color: #8C827A;
+      line-height: 1.6;
+    }
+    .footer a {
+      color: #121212;
+      text-decoration: none;
+      font-weight: 600;
     }
   </style>
 </head>
-
 <body>
-  <div class="container">
-    <div class="card">
+  <div class="wrapper">
+    <div class="container">
+      <!-- Header -->
       <div class="header">
-        <div class="logo">HS</div>
+        <span class="brand-tag">HAUTE COUTURE & LUXURY APPAREL</span>
+        <h1 class="brand-title">HS ATELIER</h1>
         <div>
-          <h1 class="title">Đơn hàng <span style="color:var(--brand)">{{ORDER_ID}}</span> — Đã giao</h1>
-          <div class="subtitle">Cảm ơn bạn đã mua sắm tại HS Fashion</div>
+          <span class="hero-badge">KIỆN HÀNG ĐÃ GIAO THÀNH CÔNG</span>
         </div>
       </div>
 
-      <div class="body">
-        <p class="greet">Xin chào {{USER_NAME}},</p>
-        <p class="info">Đơn hàng của bạn đã được giao vào <strong>{{DELIVERY_DATE}}</strong>. Dưới đây là chi tiết đơn
-          hàng:</p>
-
-        <div class="items">
-          {{ORDER_SUMMARY}}
-        </div>
-
-        <div class="totals" aria-hidden="true">
-          <div class="label">Tổng thanh toán:</div>
-          <div class="amount">{{ORDER_TOTAL}}</div>
-        </div>
-
-        <a class="cta" href="{{FE_ORDER_URL}}">Xem chi tiết đơn hàng</a>
-        <p style="text-align:center;margin-top:12px;color:var(--muted);font-size:13px">
-          Nếu có thắc mắc, vui lòng trả lời email này hoặc liên hệ hotline để được hỗ trợ.
+      <!-- Main Content -->
+      <div class="content">
+        <p class="greeting">
+          Kính chào Quý khách <strong>{{USER_NAME}}</strong>,
         </p>
+        <p style="font-size: 13px; color: #57514B; line-height: 1.6; margin: 0;">
+          Kiện hàng thời trang may đo của bạn đã được đơn vị vận chuyển giao thành công vào lúc <strong>{{DELIVERY_DATE}}</strong>. Chúng tôi hy vọng các thiết kế mang lại sự hài lòng và trải nghiệm may mặc tuyệt vời nhất cho bạn.
+        </p>
+
+        <!-- Order Snapshot Box -->
+        <table class="kpi-table" cellpadding="0" cellspacing="0">
+          <tr>
+            <td class="kpi-td" style="width: 50%;">
+              <span class="kpi-label">MÃ ĐƠN HÀNG</span>
+              <p class="kpi-val" style="color: #121212; font-weight: 600;">{{ORDER_ID}}</p>
+            </td>
+            <td class="kpi-td" style="width: 50%;">
+              <span class="kpi-label">THỜI GIAN GIAO HÀNG</span>
+              <p class="kpi-val">{{DELIVERY_DATE}}</p>
+            </td>
+          </tr>
+          <tr>
+            <td class="kpi-td">
+              <span class="kpi-label">NGƯỜI NHẬN</span>
+              <p class="kpi-val">{{USER_NAME}}</p>
+            </td>
+            <td class="kpi-td">
+              <span class="kpi-label">TRẠNG THÁI THANH TOÁN</span>
+              <p class="kpi-val" style="color: #2E5E4E;">ĐÃ THANH TOÁN HOÀN TẤT</p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Products Summary -->
+        <div class="section-heading">CHI TIẾT THIẾT KẾ MAY ĐO</div>
+        <div class="items-container">
+          {{{ORDER_SUMMARY}}}
+        </div>
+
+        <!-- Total Box -->
+        <div class="total-box">
+          <span class="total-label">TỔNG GIÁ TRỊ THANH TOÁN:</span>
+          <span class="total-amount">{{ORDER_TOTAL}}</span>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="cta-area">
+          <a href="{{FE_ORDER_URL}}" class="btn-cta" target="_blank">
+            XEM CHI TIẾT & ĐÁNH GIÁ ĐƠN HÀNG
+          </a>
+        </div>
+
+        <!-- Appreciation Note -->
+        <div class="appreciation">
+          “Mỗi đường kim mũi chỉ gửi trao là một lời tri ân sâu sắc từ đội ngũ nghệ nhân may đo HS Atelier. Cảm ơn bạn đã luôn lựa chọn và đồng hành cùng chúng tôi trên hành trình định hình phong cách cá nhân.”
+        </div>
       </div>
 
+      <!-- Footer -->
       <div class="footer">
-        HS Fashion — Thời trang chất lượng • <a href="{{FE_URL}}" style="color:var(--brand);text-decoration:none">Truy
-          cập website</a>
+        <p style="margin: 0 0 6px;">
+          <strong>HS ATELIER MANAGEMENT</strong> — Không gian thời trang thiết kế may đo cao cấp.
+        </p>
+        <p style="margin: 0;">
+          Mọi thắc mắc cần hỗ trợ, vui lòng phản hồi trực tiếp email này hoặc truy cập <a href="{{FE_URL}}">Cửa hàng trực tuyến</a>.
+        </p>
       </div>
     </div>
   </div>
 </body>
-
 </html>

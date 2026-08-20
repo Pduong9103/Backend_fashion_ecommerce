@@ -1,0 +1,20 @@
+[
+  {
+    "id": "policy-return-7days",
+    "title": "Chính sách đổi trả sản phẩm trong 7 ngày",
+    "category": "return_policy",
+    "content": "HS Fashion Atelier áp dụng chính sách đổi hàng trong vòng 07 ngày kể từ ngày nhận hàng thành công. Áp dụng đổi size, đổi màu hoặc đổi mẫu khác. Điều kiện: Sản phẩm nguyên tem mác, chưa qua sử dụng hay giặt ủi, còn nguyên hộp bao bì. Miễn phí 100% phí ship 2 chiều nếu sản phẩm bị lỗi từ nhà sản xuất."
+  },
+  {
+    "id": "policy-shipping-express",
+    "title": "Chính sách vận chuyển và giao hàng hỏa tốc",
+    "category": "shipping_policy",
+    "content": "Miễn phí vận chuyển tiêu chuẩn cho mọi đơn hàng từ 1.000.000 VNĐ trên toàn quốc. Đơn hàng nội thành Hà Nội và TP.HCM nhận trong 1-2 ngày; các tỉnh thành khác từ 2-4 ngày. Có hỗ trợ giao hỏa tốc 2 giờ tại nội thành."
+  },
+  {
+    "id": "policy-materials-authenticity",
+    "title": "Cam kết chất liệu và bảo hành may đo",
+    "category": "warranty_policy",
+    "content": "100% sản phẩm sử dụng chất liệu tự nhiên thượng hạng: Lụa tơ tằm Mulberry 22 Momme, Len Cashmere Highland, Da bò thuộc thảo mộc Tuscan tự nhiên. Bảo hành đường may, khóa kéo và khuy cúc 12 tháng trên toàn quốc."
+  }
+]

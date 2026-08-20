@@ -1,0 +1,21 @@
+{
+  "name": "wms-inventory-service",
+  "version": "1.0.0",
+  "description": "Warehouse Management & Inventory Microservice for Fashion E-Commerce",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.13.3",
+    "prisma": "^6.4.1"
+  }
+}

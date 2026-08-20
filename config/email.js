@@ -65,7 +65,7 @@ const sendDeliveredOrderEmail = async (to, orderDetails) => {
     const mailOptions = {
       from: DEFAULT_FROM,
       to,
-      subject: `Đơn hàng ${orderDetails.id} đã được giao`,
+      subject: `Kiện hàng ${orderDetails.id} đã được giao thành công — HS ATELIER`,
       html
     };
 
@@ -77,4 +77,42 @@ const sendDeliveredOrderEmail = async (to, orderDetails) => {
   }
 };
 
-module.exports = { sendOtpEmail, sendResetPasswordEmail, sendDeliveredOrderEmail, DEFAULT_FROM, SHOP_NAME };
+// sendNewsletterWelcomeEmail: gửi email thư mời chào mừng thành viên mới
+const NEWSLETTER_TEMPLATE_PATH = path.join(__dirname, '..', 'templates', 'newsletterWelcomeTemplate.html');
+
+const sendNewsletterWelcomeEmail = async (toEmail) => {
+  try {
+    let html = '';
+    const feUrl = process.env.FE_URL || 'http://localhost:5000';
+    if (fs.existsSync(NEWSLETTER_TEMPLATE_PATH)) {
+      let tpl = fs.readFileSync(NEWSLETTER_TEMPLATE_PATH, 'utf8');
+      tpl = tpl.replace(/{{\s*USER_EMAIL\s*}}/g, toEmail)
+               .replace(/{{\s*FE_URL\s*}}/g, feUrl);
+      html = tpl;
+    } else {
+      html = `<p>Chào mừng bạn gia nhập HS Fashion Atelier! Sử dụng mã <strong>ATELIER10</strong> để được giảm 10% đơn hàng đầu tiên.</p>`;
+    }
+
+    const mailOptions = {
+      from: DEFAULT_FROM,
+      to: toEmail,
+      subject: `[HS ATELIER] Thư Mời Đặc Quyền Private Sale & Mã Ưu Đãi 10% Chào Mừng`,
+      html,
+    };
+
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (err) {
+    console.error('[email.sendNewsletterWelcomeEmail] error', err && err.stack ? err.stack : err);
+    throw err;
+  }
+};
+
+module.exports = {
+  sendOtpEmail,
+  sendResetPasswordEmail,
+  sendDeliveredOrderEmail,
+  sendNewsletterWelcomeEmail,
+  DEFAULT_FROM,
+  SHOP_NAME,
+};

@@ -3,7 +3,7 @@ const email = require('../config/email');
 
 async function buildOrderSummaryHtml(orderId, client) {
     const q = `
-      SELECT oi.qty, oi.final_price, oi.name_snapshot, oi.color_snapshot, oi.size_snapshot,
+      SELECT oi.qty, oi.final_price, oi.unit_price, oi.name_snapshot, oi.color_snapshot, oi.size_snapshot,
              p.id as product_id,
              (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY COALESCE(pi.position,0) LIMIT 1) as image
       FROM order_items oi
@@ -13,24 +13,36 @@ async function buildOrderSummaryHtml(orderId, client) {
     `;
     const { rows } = await client.query(q, [orderId]);
     if (!rows.length) return '';
-    let html = `<table style="width:100%; border-collapse:collapse">`;
-    html += `<thead><tr>
-      <th style="text-align:left;padding:6px;border-bottom:1px solid #eee">Sản phẩm</th>
-      <th style="text-align:right;padding:6px;border-bottom:1px solid #eee">Đơn giá</th>
-      <th style="text-align:center;padding:6px;border-bottom:1px solid #eee">SL</th>
-      <th style="text-align:right;padding:6px;border-bottom:1px solid #eee">Tổng</th>
+    let html = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">`;
+    html += `<thead><tr style="background:#FAF9F6; border-bottom:1px solid rgba(18,18,18,0.08); text-transform:uppercase; font-size:10px; color:#8C827A; letter-spacing:1px;">
+      <th style="text-align:left; padding:10px 12px; font-weight:600;">Thiết Kế May Đo</th>
+      <th style="text-align:center; padding:10px 12px; font-weight:600;">Số Lượng</th>
+      <th style="text-align:right; padding:10px 12px; font-weight:600;">Đơn Giá</th>
+      <th style="text-align:right; padding:10px 12px; font-weight:600;">Thành Tiền</th>
     </tr></thead><tbody>`;
     for (const r of rows) {
-      const name = r.name_snapshot || '';
-      const color = r.color_snapshot ? ` / ${r.color_snapshot}` : '';
-      const size = r.size_snapshot ? ` / ${r.size_snapshot}` : '';
-      const unitPrice = Number(r.unit_price || 0);
+      const name = r.name_snapshot || 'Sản phẩm may đo';
+      const color = r.color_snapshot ? `<span style="display:inline-block; font-size:10px; color:#57514B; background:#ECE8E1; padding:2px 6px; margin-right:4px;">${r.color_snapshot}</span>` : '';
+      const size = r.size_snapshot ? `<span style="display:inline-block; font-size:10px; color:#57514B; background:#ECE8E1; padding:2px 6px;">Size: ${r.size_snapshot}</span>` : '';
+      const imageTag = r.image ? `<img src="${r.image}" alt="${name}" style="width:44px; height:44px; object-fit:cover; border:1px solid rgba(18,18,18,0.08); vertical-align:middle; margin-right:10px;" />` : '';
+      const unitPrice = Number(r.unit_price || r.final_price || 0);
       const lineTotal = Number(r.final_price || 0);
-      html += `<tr>
-        <td style="padding:8px 6px;border-bottom:1px solid #f5f5f5">${name}${color}${size}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #f5f5f5;text-align:right">${Number(r.final_price || 0).toLocaleString('vi-VN')} ₫</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #f5f5f5;text-align:center">${r.qty}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #f5f5f5;text-align:right">${lineTotal.toLocaleString('vi-VN')} ₫</td>
+
+      html += `<tr style="border-bottom:1px solid rgba(18,18,18,0.05);">
+        <td style="padding:12px; text-align:left; vertical-align:middle;">
+          <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+            <tr>
+              ${imageTag ? `<td style="vertical-align:middle;">${imageTag}</td>` : ''}
+              <td style="vertical-align:middle;">
+                <div style="font-weight:500; color:#121212; font-size:12px; margin-bottom:4px;">${name}</div>
+                <div>${color}${size}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+        <td style="padding:12px; text-align:center; vertical-align:middle; color:#121212; font-weight:600;">×${r.qty}</td>
+        <td style="padding:12px; text-align:right; vertical-align:middle; color:#57514B;">${unitPrice.toLocaleString('vi-VN')} ₫</td>
+        <td style="padding:12px; text-align:right; vertical-align:middle; color:#121212; font-weight:600;">${lineTotal.toLocaleString('vi-VN')} ₫</td>
       </tr>`;
     }
     html += `</tbody></table>`;
@@ -46,7 +58,7 @@ async function sendDeliveryEmailIfNeeded(orderId) {
 
     // lock order row and read relevant fields
     const oRes = await client.query(
-      `SELECT id, user_id, order_status, updated_at, final_amount
+      `SELECT id, order_code, user_id, order_status, updated_at, final_amount
        FROM orders WHERE id = $1 FOR UPDATE`,
       [orderId]
     );
@@ -89,12 +101,15 @@ async function sendDeliveryEmailIfNeeded(orderId) {
 
     const orderSummaryHtml = await buildOrderSummaryHtml(orderId, client);
 
+    const feBaseUrl = process.env.FE_URL || 'http://localhost:5000';
     orderDetailsForEmail = {
-      id: orderId,
+      id: order.order_code || (`#${orderId.slice(0, 8).toUpperCase()}`),
       updated_at: order.updated_at || new Date().toISOString(),
-      user_name: user.full_name || '',
+      user_name: user.full_name || 'Quý khách',
       order_summary_html: orderSummaryHtml,
       total_display: Number(order.final_amount || 0).toLocaleString('vi-VN') + ' ₫',
+      fe_order_url: `${feBaseUrl}/customer/order/${orderId}`,
+      fe_url: feBaseUrl,
       to: user.email
     };
 

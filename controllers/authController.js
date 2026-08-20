@@ -19,6 +19,17 @@ const register = async (req, res, next) => {
   }
 };
 
+const setRefreshTokenCookie = (res, refreshToken) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+};
+
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -26,16 +37,22 @@ const login = async (req, res, next) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
     const result = await authService.login({ email, password });
+    
+    // Set secure HttpOnly cookie for refresh token
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+
     const sessionId = req.body.session_id || req.headers['x-session-id'] || req.sessionId;
-    if (sessionId) {
+    if (sessionId && result.user?.id) {
       try {
-        const merged = await authService.mergeEventsForUser(user.id, sessionId);
+        const merged = await authService.mergeEventsForUser(result.user.id, sessionId);
         console.log('[auth.login] merged events count=', merged.updated);
       } catch (err) {
         console.error('[auth.login] mergeEventsForUser error', err && err.stack ? err.stack : err);
       }
     }
-    res.status(200).json(result); //Trả về {token, user}
+    res.status(200).json(result); // Trả về { accessToken, refreshToken, user }
   } catch (error) {
     next(error);
   }
@@ -48,6 +65,9 @@ const adminLogin = async (req, res, next) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
     const result = await authService.adminLogin({ email, password });
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -56,12 +76,16 @@ const adminLogin = async (req, res, next) => {
 
 const refresh = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    // Read from HttpOnly cookie or request body
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken) {
       return res.status(400).json({ error: 'Missing refresh token' });
     }
     const result = await authService.refresh(refreshToken);
-    res.status(200).json(result); // { "accessToken": "new_jwt" }
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
+    }
+    res.status(200).json(result); // { "accessToken": "new_jwt", "refreshToken": "new_ref_token", "user": ... }
   } catch (error) {
     next(error);
   }
@@ -105,16 +129,22 @@ const verifyOtpController = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) {
-      return res.status(400).json({ error: 'Mising refresh token' });
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (refreshToken) {
+      await authService.logout(refreshToken);
     }
-    await authService.logout(refreshToken);
+    const isProd = process.env.NODE_ENV === 'production';
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/'
+    });
     res.status(204).send();
   } catch (error) {
     next(error);
   }
-}
+};
 
 const googleAuth = passport.authenticate('google', { scope: ['profile', 'email'] });
 
@@ -149,20 +179,9 @@ const googleCallback = async (req, res, next) => {
 
     const FE = (process.env.FE_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
-    if (process.env.NODE_ENV === 'production') {
-      res.cookie('accessToken', result.accessToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        maxAge: 60 * 60 * 1000,
-      });
-      res.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-      return res.redirect(`${FE}/callback?status=success`);
+    // Set secure HttpOnly cookies
+    if (result.refreshToken) {
+      setRefreshTokenCookie(res, result.refreshToken);
     }
 
     const params = new URLSearchParams({

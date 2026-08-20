@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Danh mục Kho hàng / Chi nhánh
+model warehouses {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String             @unique @db.VarChar(50)
+  name            String             @db.VarChar(150)
+  address         String?            @db.Text
+  phone           String?            @db.VarChar(20)
+  is_active       Boolean            @default(true)
+  is_default      Boolean            @default(false)
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?          @default(now()) @db.Timestamp(6)
+
+  inventory_stocks       inventory_stocks[]
+  goods_receipt_notes    goods_receipt_notes[]
+  goods_issue_notes      goods_issue_notes[]
+  stock_transfers_from   stock_transfers[] @relation("WarehouseFrom")
+  stock_transfers_to     stock_transfers[] @relation("WarehouseTo")
+  stocktakes             stocktakes[]
+  inventory_transactions inventory_transactions[]
+}
+
+// 2. Tồn kho biến thể theo từng kho (Stock Matrix 3 lớp)
+model inventory_stocks {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id    String            @db.Uuid
+  variant_id      String            @db.Uuid
+  sku             String?           @db.VarChar(100)
+  on_hand_qty     Int               @default(0) // Tồn vật lý thực tế
+  allocated_qty   Int               @default(0) // Tồn đang giữ cho đơn hàng
+  available_qty   Int               @default(0) // on_hand_qty - allocated_qty
+  min_alert_qty   Int               @default(5)
+  max_alert_qty   Int?              
+  bin_location    String?           @db.VarChar(50) // Vị trí kệ lưu trữ: Kệ A-01-02
+  updated_at      DateTime?         @default(now()) @db.Timestamp(6)
+
+  warehouse       warehouses        @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+
+  @@unique([warehouse_id, variant_id], map: "uq_warehouse_variant_stock")
+  @@index([variant_id], map: "idx_inventory_stocks_variant")
+  @@index([available_qty], map: "idx_inventory_stocks_available")
+}
+
+// 3. Đơn đặt hàng Nhà Cung Cấp (Purchase Orders - PO)
+model purchase_orders {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String             @unique @db.VarChar(50) // VD: PO-20260820-001
+  supplier_id     String             @db.Uuid
+  supplier_name   String?            @db.VarChar(150)
+  warehouse_id    String             @db.Uuid
+  status          String             @default("draft") @db.VarChar(30) // draft, approved, receiving, completed, cancelled
+  total_amount    Decimal            @default(0) @db.Decimal(14, 2)
+  expected_date   DateTime?          @db.Date
+  notes           String?            @db.Text
+  created_by      String?            @db.Uuid
+  approved_by     String?            @db.Uuid
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?          @default(now()) @db.Timestamp(6)
+
+  items           purchase_order_items[]
+  receipt_notes   goods_receipt_notes[]
+}
+
+model purchase_order_items {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  po_id           String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  product_name    String?            @db.VarChar(200)
+  color_name      String?            @db.VarChar(50)
+  size_label      String?            @db.VarChar(20)
+  ordered_qty     Int
+  received_qty    Int                @default(0)
+  unit_cost       Decimal            @db.Decimal(12, 2)
+  total_cost      Decimal            @db.Decimal(14, 2)
+
+  purchase_order  purchase_orders    @relation(fields: [po_id], references: [id], onDelete: Cascade)
+}
+
+// 4. Phiếu Nhập Kho (Goods Receipt Note - GRN)
+model goods_receipt_notes {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String             @unique @db.VarChar(50) // VD: GRN-20260820-001
+  po_id           String?            @db.Uuid
+  warehouse_id    String             @db.Uuid
+  supplier_id     String?            @db.Uuid
+  supplier_name   String?            @db.VarChar(150)
+  receipt_type    String             @default("po_import") @db.VarChar(30) // po_import, return_import, transfer_import, other
+  status          String             @default("draft") @db.VarChar(30) // draft, qc_pending, completed, cancelled
+  total_qty       Int                @default(0)
+  total_value     Decimal            @default(0) @db.Decimal(14, 2)
+  notes           String?            @db.Text
+  created_by      String?            @db.Uuid
+  confirmed_by    String?            @db.Uuid
+  received_at     DateTime?          @db.Timestamp(6)
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+
+  warehouse       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  purchase_order  purchase_orders?   @relation(fields: [po_id], references: [id], onDelete: SetNull)
+  items           goods_receipt_items[]
+}
+
+model goods_receipt_items {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receipt_id      String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  product_name    String?            @db.VarChar(200)
+  color_name      String?            @db.VarChar(50)
+  size_label      String?            @db.VarChar(20)
+  quantity        Int
+  unit_cost       Decimal            @default(0) @db.Decimal(12, 2)
+  total_cost      Decimal            @default(0) @db.Decimal(14, 2)
+  batch_number    String?            @db.VarChar(50)
+
+  receipt_note    goods_receipt_notes @relation(fields: [receipt_id], references: [id], onDelete: Cascade)
+}
+
+// 5. Phiếu Xuất Kho (Goods Issue Note - GIN)
+model goods_issue_notes {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String             @unique @db.VarChar(50) // VD: GIN-20260820-001
+  order_id        String?            @db.Uuid
+  order_code      String?            @db.VarChar(50)
+  warehouse_id    String             @db.Uuid
+  issue_type      String             @default("order_fulfillment") @db.VarChar(30) // order_fulfillment, supplier_return, damaged_write_off, transfer_export, sample
+  status          String             @default("draft") @db.VarChar(30) // draft, picking, packed, shipped, cancelled
+  total_qty       Int                @default(0)
+  carrier_code    String?            @db.VarChar(50)
+  tracking_number String?            @db.VarChar(100)
+  notes           String?            @db.Text
+  created_by      String?            @db.Uuid
+  shipped_by      String?            @db.Uuid
+  shipped_at      DateTime?          @db.Timestamp(6)
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+
+  warehouse       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  items           goods_issue_items[]
+}
+
+model goods_issue_items {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  issue_id        String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  product_name    String?            @db.VarChar(200)
+  color_name      String?            @db.VarChar(50)
+  size_label      String?            @db.VarChar(20)
+  quantity        Int
+  unit_price      Decimal            @default(0) @db.Decimal(12, 2)
+
+  issue_note      goods_issue_notes  @relation(fields: [issue_id], references: [id], onDelete: Cascade)
+}
+
+// 6. Phiếu Điều Chuyển Kho (Stock Transfers)
+model stock_transfers {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code              String           @unique @db.VarChar(50)
+  from_warehouse_id String           @db.Uuid
+  to_warehouse_id   String           @db.Uuid
+  status            String           @default("pending") @db.VarChar(30) // pending, in_transit, completed, cancelled
+  total_qty         Int              @default(0)
+  notes             String?          @db.Text
+  created_by        String?          @db.Uuid
+  approved_by       String?          @db.Uuid
+  created_at        DateTime?        @default(now()) @db.Timestamp(6)
+  completed_at      DateTime?        @db.Timestamp(6)
+
+  from_warehouse    warehouses       @relation("WarehouseFrom", fields: [from_warehouse_id], references: [id], onDelete: Restrict)
+  to_warehouse      warehouses       @relation("WarehouseTo", fields: [to_warehouse_id], references: [id], onDelete: Restrict)
+  items             stock_transfer_items[]
+}
+
+model stock_transfer_items {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transfer_id     String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  quantity        Int
+
+  transfer        stock_transfers    @relation(fields: [transfer_id], references: [id], onDelete: Cascade)
+}
+
+// 7. Phiếu Kiểm Kê Kho (Stocktake / Inventory Audit)
+model stocktakes {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String             @unique @db.VarChar(50) // VD: STK-20260820-001
+  warehouse_id    String             @db.Uuid
+  status          String             @default("in_progress") @db.VarChar(30) // draft, in_progress, completed, cancelled
+  total_system_qty Int               @default(0)
+  total_actual_qty Int               @default(0)
+  total_diff_qty   Int               @default(0)
+  notes           String?            @db.Text
+  created_by      String?            @db.Uuid
+  approved_by     String?            @db.Uuid
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+  completed_at    DateTime?          @db.Timestamp(6)
+
+  warehouse       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  items           stocktake_items[]
+}
+
+model stocktake_items {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stocktake_id    String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  product_name    String?            @db.VarChar(200)
+  color_name      String?            @db.VarChar(50)
+  size_label      String?            @db.VarChar(20)
+  system_qty      Int
+  actual_qty      Int
+  diff_qty        Int                // actual_qty - system_qty (dương = thừa, âm = thiếu)
+  reason          String?            @db.VarChar(200)
+
+  stocktake       stocktakes         @relation(fields: [stocktake_id], references: [id], onDelete: Cascade)
+}
+
+// 8. Sổ Nhật Ký Giao Dịch Tồn Kho (Immutable Stock Ledger)
+model inventory_transactions {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id    String             @db.Uuid
+  variant_id      String             @db.Uuid
+  sku             String?            @db.VarChar(100)
+  trans_type      String             @db.VarChar(40) 
+  // 'ORDER_ALLOCATE', 'ORDER_RELEASE', 'ORDER_FULFILLMENT', 
+  // 'PURCHASE_RECEIPT', 'PURCHASE_RETURN', 'CUSTOMER_RETURN', 
+  // 'STOCKTAKE_ADJUST', 'TRANSFER_OUT', 'TRANSFER_IN', 'WRITE_OFF'
+  
+  change_on_hand  Int                @default(0)
+  change_allocated Int               @default(0)
+  change_available Int               @default(0)
+  
+  balance_on_hand   Int
+  balance_allocated Int
+  balance_available Int
+  
+  ref_type        String             @db.VarChar(50)
+  ref_id          String             @db.Uuid
+  ref_code        String?            @db.VarChar(50)
+  notes           String?            @db.Text
+  created_by      String?            @db.Uuid
+  created_at      DateTime?          @default(now()) @db.Timestamp(6)
+
+  warehouse       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+
+  @@index([warehouse_id, variant_id, created_at], map: "idx_inv_trans_lookup")
+  @@index([ref_type, ref_id], map: "idx_inv_trans_ref")
+}

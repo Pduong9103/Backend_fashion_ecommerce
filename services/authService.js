@@ -139,8 +139,10 @@ const refresh = async (refreshToken) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    
+    // Check if token exists
     const result = await client.query(
-      'SELECT * FROM refresh_tokens WHERE token = $1 AND revoked = FALSE',
+      'SELECT * FROM refresh_tokens WHERE token = $1',
       [refreshToken]
     );
     if (result.rows.length === 0) {
@@ -150,27 +152,82 @@ const refresh = async (refreshToken) => {
     }
     const tokenData = result.rows[0];
 
-    if (tokenData.expires_at <= new Date()) {
+    // Token Reuse Detection: If a revoked token is used again, revoke all tokens for this user!
+    if (tokenData.revoked) {
+      await client.query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1',
+        [tokenData.user_id]
+      );
+      await client.query('COMMIT');
+      const error = new Error('Refresh token has been revoked. Potential token reuse detected.');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    // Check expiration
+    if (new Date(tokenData.expires_at) <= new Date()) {
       await client.query(
         'UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1',
         [refreshToken]
       );
+      await client.query('COMMIT');
       const error = new Error('Refresh token has expired');
       error.statusCode = 401;
       throw error;
     }
 
+    // 1. Revoke the old token (Refresh Token Rotation)
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1',
+      [refreshToken]
+    );
+
+    // 2. Fetch user details
     const userResult = await client.query(
-      'SELECT id, email, role FROM users WHERE id = $1',
+      'SELECT id, email, full_name, name, role, status FROM users WHERE id = $1',
       [tokenData.user_id]
     );
+    if (userResult.rows.length === 0 || userResult.rows[0].status === 'banned') {
+      const error = new Error('User account is invalid or banned');
+      error.statusCode = 403;
+      throw error;
+    }
     const user = userResult.rows[0];
+
+    // 3. Generate NEW Access Token and NEW Refresh Token (Full Pair Rotation)
     const newAccessToken = generateToken(user);
+    const newRefreshToken = generateFreshToken();
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await client.query(
+      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, newRefreshToken, newExpiresAt]
+    );
+
     await client.query('COMMIT');
-    return { accessToken: newAccessToken };
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: { id: user.id, email: user.email, full_name: user.full_name || user.name, role: user.role }
+    };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
+  }
+};
+
+const logout = async (refreshToken) => {
+  const client = await pool.connect();
+  try {
+    if (refreshToken) {
+      await client.query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1',
+        [refreshToken]
+      );
+    }
+    return { success: true };
   } finally {
     client.release();
   }
@@ -236,25 +293,6 @@ const verifyOtpAndRegister = async ({ email, otp, password, full_name, phone }) 
     const user = await register({ email, password, full_name, phone });
     await client.query('COMMIT');
     return user;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-const logout = async (refreshToken) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await client.query('UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1 RETURNING *', [refreshToken]);
-    if (result.rows.length === 0) {
-      const error = new Error('Invalid refresh token');
-      error.statusCode = 401;
-      throw error;
-    }
-    await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

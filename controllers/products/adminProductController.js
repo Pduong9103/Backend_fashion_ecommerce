@@ -2,14 +2,15 @@ const { validatePriceRange } = require('../../utils/validate');
 const productService = require('../../services/productService');
 
 exports.getFlashSaleProducts = async (req, res) => {
-  const { category_id, supplier_id, limit, page, cursor, flash_sale, min_price, max_price, status } = req.query;
+  const { category_id, supplier_id, limit, page, cursor, flash_sale, min_price, max_price, status, search_key } = req.query;
   
   const { min, max } = validatePriceRange(min_price, max_price);
 
   const filters = {
     category_id,
     supplier_id,
-    limit: parseInt(limit) || 10,
+    search_key: search_key || undefined,
+    limit: parseInt(limit) || 100,
     page: parseInt(page) || 1,
     is_flash_sale: flash_sale === 'true' ? true : flash_sale === 'false' ? false : undefined,
     min_price: min,

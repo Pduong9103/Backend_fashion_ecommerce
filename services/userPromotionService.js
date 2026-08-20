@@ -279,9 +279,14 @@ exports.getEligibleCollectedPromotionsForCheckout = async (userId, { eligibleSub
         throw e;
     }
 
-    // eligibleSubtotal may be null -> then return all collected promotions (subject to active/time/usage checks)
     const q = `
-        SELECT p.*, up.code, up.created_at AS collected_at
+        SELECT p.*, up.code, up.created_at AS collected_at,
+          CASE 
+            WHEN p.min_order_value IS NULL THEN true
+            WHEN $2::numeric IS NULL THEN true
+            WHEN p.min_order_value <= $2::numeric THEN true
+            ELSE false
+          END AS is_eligible
         FROM promotions p
         JOIN user_promotions up ON p.id = up.promotion_id
         WHERE up.user_id = $1
@@ -290,8 +295,7 @@ exports.getEligibleCollectedPromotionsForCheckout = async (userId, { eligibleSub
           AND (p.start_date IS NULL OR p.start_date <= NOW())
           AND (p.end_date IS NULL OR p.end_date >= NOW())
           AND (p.usage_limit IS NULL OR COALESCE(p.used_count,0) < p.usage_limit)
-          AND (p.min_order_value IS NULL OR $2::numeric IS NULL OR p.min_order_value <= $2)
-        ORDER BY up.created_at DESC
+        ORDER BY is_eligible DESC, up.created_at DESC
     `;
     const { rows } = await pool.query(q, [userId, eligibleSubtotal]);
     return rows;

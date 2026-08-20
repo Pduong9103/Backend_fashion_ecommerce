@@ -5,12 +5,22 @@ const orderController = require('../controllers/orders/orderController');
 const promotionController = require('../controllers/promotions/promotionController');
 const cartController = require('../controllers/cart/cartController');
 const favoriteController = require('../controllers/favorite/favoriteController');
+const notificationController = require('../controllers/notificationController');
 const { authMiddleware, requireUser } = require('../middleware/authMiddleware');
+
+// Notifications
+router.get('/notifications', requireUser, notificationController.getNotifications);
+router.put('/notifications/:id/read', requireUser, notificationController.markAsRead);
+router.put('/notifications/read-all', requireUser, notificationController.markAllAsRead);
+router.get('/notifications/settings', requireUser, notificationController.getSettings);
+router.put('/notifications/settings', requireUser, notificationController.updateSettings);
 
 router.post('/orders', requireUser, orderController.createOrder);
 router.get('/orders', requireUser, orderController.getOrders);
 router.get('/orders/:id', requireUser, orderController.getOrderById);
 router.post('/orders/:id/cancel', requireUser, orderController.cancelOrder);
+router.post('/orders/:id/confirm-received', requireUser, orderController.confirmReceived);
+router.post('/orders/:id/request-return', requireUser, orderController.requestReturn);
 
 //profile
 router.get('/profile', requireUser, userController.getUserById);
