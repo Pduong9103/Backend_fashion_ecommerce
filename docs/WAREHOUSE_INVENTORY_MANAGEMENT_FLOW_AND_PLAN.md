@@ -1,7 +1,7 @@
 # TÀI LIỆU THIẾT KẾ QUY TRÌNH QUẢN LÝ KHO (WMS) & KIẾN TRÚC MICROSERVICES CONTAINER
 **Hệ thống:** Fashion E-Commerce Platform (Admin Role)  
 **Kiến trúc:** Microservices & Multi-Container Docker Architecture  
-**Tác giả:** Antigravity Solution Architecture Team  
+**Tác giả:** PD Solution Architecture Team  
 **Phiên bản:** 2.0 (Bản nâng cấp Microservices & Dockerized WMS)  
 **Trạng thái:** Bản thiết kế hoàn chỉnh & Sẵn sàng triển khai  
 

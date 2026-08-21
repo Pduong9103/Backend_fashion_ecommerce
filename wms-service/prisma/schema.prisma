@@ -20,6 +20,7 @@ model warehouses {
   updated_at      DateTime?          @default(now()) @db.Timestamp(6)
 
   inventory_stocks       inventory_stocks[]
+  purchase_orders        purchase_orders[]
   goods_receipt_notes    goods_receipt_notes[]
   goods_issue_notes      goods_issue_notes[]
   stock_transfers_from   stock_transfers[] @relation("WarehouseFrom")
@@ -65,6 +66,7 @@ model purchase_orders {
   created_at      DateTime?          @default(now()) @db.Timestamp(6)
   updated_at      DateTime?          @default(now()) @db.Timestamp(6)
 
+  warehouse       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
   items           purchase_order_items[]
   receipt_notes   goods_receipt_notes[]
 }

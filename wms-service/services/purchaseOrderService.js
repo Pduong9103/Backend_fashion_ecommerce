@@ -7,13 +7,19 @@ class PurchaseOrderService {
     return `PO-${dateStr}-${rand}`;
   }
 
-  async getAll({ warehouseId, supplierId, status, page = 1, limit = 20 }) {
+  async getAll({ warehouseId, supplierId, status, fromDate, toDate, page = 1, limit = 20 }) {
     const skip = (page - 1) * limit;
     const where = {};
 
     if (warehouseId) where.warehouse_id = warehouseId;
     if (supplierId) where.supplier_id = supplierId;
     if (status) where.status = status;
+
+    if (fromDate || toDate) {
+      where.created_at = {};
+      if (fromDate) where.created_at.gte = new Date(fromDate);
+      if (toDate) where.created_at.lte = new Date(toDate);
+    }
 
     const [total, data] = await Promise.all([
       prisma.purchase_orders.count({ where }),
@@ -23,6 +29,7 @@ class PurchaseOrderService {
         take: parseInt(limit),
         include: {
           items: true,
+          warehouse: { select: { id: true, code: true, name: true } },
           _count: { select: { receipt_notes: true } },
         },
         orderBy: [{ created_at: 'desc' }],
@@ -37,6 +44,7 @@ class PurchaseOrderService {
       where: { id },
       include: {
         items: true,
+        warehouse: true,
         receipt_notes: {
           include: { items: true },
         },

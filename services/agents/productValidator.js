@@ -38,13 +38,12 @@ async function validateAndEnrichProducts(rawItems = []) {
             pv.id as variant_id,
             pv.color_name,
             pv.color_code,
-            pv.stock_qty,
             COALESCE(
               (SELECT json_agg(json_build_object('url', pi.url)) FROM product_images pi WHERE pi.product_id = p.id),
               '[]'::json
             ) as product_images,
             COALESCE(
-              (SELECT json_agg(json_build_object('id', v.id, 'color_name', v.color_name, 'color_code', v.color_code, 'stock_qty', v.stock_qty)) 
+              (SELECT json_agg(json_build_object('id', v.id, 'color_name', v.color_name, 'color_code', v.color_code)) 
                FROM product_variants v WHERE v.product_id = p.id),
               '[]'::json
             ) as variants
@@ -52,7 +51,7 @@ async function validateAndEnrichProducts(rawItems = []) {
           JOIN products p ON pv.product_id = p.id
           LEFT JOIN categories c ON p.category_id = c.id
           LEFT JOIN suppliers s ON p.supplier_id = s.id
-          WHERE pv.id = $1 AND p.status = 'active' AND pv.stock_qty > 0
+          WHERE pv.id = $1 AND p.status = 'active'
           LIMIT 1
         `;
         params = [variantId];
@@ -67,14 +66,14 @@ async function validateAndEnrichProducts(rawItems = []) {
             c.name as category_name,
             c.id as category_id,
             s.name as supplier_name,
-            (SELECT pv.id FROM product_variants pv WHERE pv.product_id = p.id AND pv.stock_qty > 0 LIMIT 1) as variant_id,
-            (SELECT pv.color_name FROM product_variants pv WHERE pv.product_id = p.id AND pv.stock_qty > 0 LIMIT 1) as color_name,
+            (SELECT pv.id FROM product_variants pv JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id WHERE pv.product_id = p.id AND pvs.stock_qty > 0 LIMIT 1) as variant_id,
+            (SELECT pv.color_name FROM product_variants pv JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id WHERE pv.product_id = p.id AND pvs.stock_qty > 0 LIMIT 1) as color_name,
             COALESCE(
               (SELECT json_agg(json_build_object('url', pi.url)) FROM product_images pi WHERE pi.product_id = p.id),
               '[]'::json
             ) as product_images,
             COALESCE(
-              (SELECT json_agg(json_build_object('id', v.id, 'color_name', v.color_name, 'color_code', v.color_code, 'stock_qty', v.stock_qty)) 
+              (SELECT json_agg(json_build_object('id', v.id, 'color_name', v.color_name, 'color_code', v.color_code)) 
                FROM product_variants v WHERE v.product_id = p.id),
               '[]'::json
             ) as variants

@@ -5,11 +5,15 @@ const catalogAgent = require('./catalogAgent');
 const orderAgent = require('./orderAgent');
 const ragKnowledgeAgent = require('./ragKnowledgeAgent');
 const adminAnalyticsAgent = require('./adminAnalyticsAgent');
+const promotionAgent = require('./promotionAgent');
+const inventoryAgent = require('./inventoryAgent');
 
 /**
  * Classifies user message intent into one of:
  * - 'admin' (revenue, reports, sales metrics - ONLY for admin role)
  * - 'admin_forbidden' (revenue, reports - when non-admin asks)
+ * - 'inventory' (WMS stock check, low stock alert, reorder suggestions - for admin/staff)
+ * - 'promotion' (voucher, discount codes, scope of promo, coupons)
  * - 'stylist' (outfit, styling, coordination)
  * - 'catalog' (search, price, check stock)
  * - 'order' (order history, delivery status)
@@ -19,57 +23,9 @@ async function classifyIntent(message, userRole = 'customer') {
   const m = (message || '').toLowerCase().trim();
   const isAdmin = ['admin', 'superadmin', 'manager', 'staff'].includes(String(userRole || '').toLowerCase().trim());
 
-  // 1. Admin Analytics & Revenue Keyword Pattern (Supports accents, typos, unaccented variations)
-  const isRevenueQuery =
-    /\b(doanh thu|danh thu|doanh số|danh so|doang thu|tong thu|tổng thu|báo cáo|bao cao|thống kê|thong ke|revenue|report|tổng tiền|tong tien|bán chạy|ban chay|lợi nhuận|loi nhuan|kinh doanh|bán được bao nhiêu|tiền thu được|bán được)\b/i.test(
-      m
-    );
-
-  if (isRevenueQuery) {
-    if (isAdmin) {
-      return { intent: 'admin' };
-    } else {
-      return { intent: 'admin_forbidden' };
-    }
-  }
-
-  // 2. Order Tracking Regex Quick Match (Không phụ thuộc \b ASCII để nhận diện tiếng Việt có dấu chuẩn 100%)
-  if (
-    /(đơn hàng|don hang|đơn gần nhất|don gan nhat|đơn mới nhất|don moi nhat|chi tiết đơn|chi tiet don|đơn vừa đặt|don vua dat|trạng thái đơn|trang thai don|mã đơn|ma don|tra cứu đơn|tra cuu don|kiểm tra đơn|kiem tra don|check đơn|xem đơn|lịch sử đơn|lich su don|giao hàng chưa|giao hang chua|tình trạng đơn|tinh trang don|vận chuyển đơn|van chuyen don|hủy đơn|huy don|đơn của|đơn số|đơn #|đơn 1|đơn 2|đơn 3)/i.test(m) ||
-    /(^|\s)(đơn|don)($|\s|#|[0-9]|[a-f])/i.test(m) ||
-    /#?[a-f0-9]{8}\b/i.test(m)
-  ) {
-    return { intent: 'order' };
-  }
-
-  // 3. Policy & Fabric Care Regex Quick Match
-  if (
-    /\b(đổi trả|doi tra|bảo hành|bao hanh|hoàn tiền|giặt|bảo quản|lụa|cashmere|bảng size|chọn size|số đo|size s|size m|size l|size xl)\b/i.test(
-      m
-    )
-  ) {
-    return { intent: 'policy' };
-  }
-
-  // 4. Stylist Coordination Match
-  if (
-    /\b(phối đồ|phoi do|tư vấn|tu van|set đồ|outfit|mặc gì|mac gi|đi tiệc|đi chơi|hẹn hò|công sở|hợp với|gợi ý)\b/i.test(
-      m
-    )
-  ) {
-    return { intent: 'stylist' };
-  }
-
-  // 5. Catalog Search Match
-  if (
-    /\b(tìm|tim|có áo|co ao|có quần|co quan|có váy|co vay|có túi|co tui|giá bao nhiêu|còn hàng|con hang|sản phẩm mới|mới nhất)\b/i.test(
-      m
-    )
-  ) {
-    return { intent: 'catalog' };
-  }
-
-  // 6. LLM Intent Classifier for nuanced prompts
+  // =========================================================================
+  // 🧠 TẦNG 1: LLM SEMANTIC SUPERVISOR (HIỂU NGỮ CẢNH & Ý ĐỊNH SÂU SẮC)
+  // =========================================================================
   if (process.env.OPENAI_API_KEY) {
     try {
       const response = await openai.client.chat.completions.create({
@@ -77,33 +33,86 @@ async function classifyIntent(message, userRole = 'customer') {
         messages: [
           {
             role: 'system',
-            content: `Bạn là Intent Router cho hệ thống thời trang. Phân loại tin nhắn của người dùng vào đúng 1 trong các nhóm sau:
-- "admin": Hỏi về doanh thu, doanh số, báo cáo bán hàng, thống kê số liệu kinh doanh.
-- "stylist": Tư vấn phối đồ, phong cách thời trang, gợi ý outfit.
-- "catalog": Tìm kiếm sản phẩm, xem giá, kiểm tra hàng còn/hết.
-- "order": Tra cứu đơn hàng, tình trạng giao hàng.
-- "policy": Chính sách đổi trả 7 ngày, bảo hành, hướng dẫn giặt là, bảng size.
-- "general": Chào hỏi hoặc trò chuyện chung.
-Chỉ trả về chuỗi tên intent duy nhất.`
+            content: `Bạn là Master Supervisor / Router AI của hệ thống thời trang cao cấp HS Atelier.
+Nhiệm vụ: Phân tích Ý ĐỊNH THỰC SỰ (Semantic Intent) của người dùng bất kể cách dùng từ, ẩn dụ, từ lóng hay phương ngữ.
+
+PHÂN LOẠI CHÍNH XÁC VÀO ĐÚNG 1 TRONG CÁC NHÓM SAU:
+1. "policy": Khách hỏi về chính sách đổi trả, bảo hành, hoàn tiền, hướng dẫn giặt là, bảo quản chất liệu vải (lụa, len, da, denim), bảng size, tư vấn chọn size theo chiều cao/cân nặng.
+   (Ví dụ: "Hàng mua về mặc không vừa thì làm sao?", "Có được đổi mẫu khác không?", "Áo này giặt máy được không?", "Cao 1m75 nặng 70kg mặc size gì?")
+2. "promotion": Khách hỏi về mã giảm giá, voucher, khuyến mãi, coupon, ưu đãi, freeship, phạm vi áp dụng mã.
+   (Ví dụ: "Có mã nào giảm giá không?", "Mua đơn này có được bớt tiền không?", "Có voucher freeship không?")
+3. "stylist": Khách cần tư vấn phong cách, gợi ý phối đồ (outfit), cách kết hợp áo quần phụ kiện theo dịp sự kiện, tone màu hoặc ngân sách.
+   (Ví dụ: "Tư vấn cho mình set đồ đi tiệc sang trọng", "Cuối tuần đi hẹn hò nên mặc gì?", "Áo blazer này phối với quần gì thì đẹp?")
+4. "catalog": Khách tìm kiếm sản phẩm cụ thể, hỏi giá sản phẩm, kiểm tra còn hàng/màu sắc/mẫu mới.
+   (Ví dụ: "Shop có áo sơ mi trắng không?", "Cho mình xem các mẫu túi xách mới nhất", "Quần jean này giá bao nhiêu?")
+5. "order": Khách tra cứu tình trạng đơn hàng, lịch sử mua hàng, thời gian giao hàng, hủy đơn.
+   (Ví dụ: "Đơn của mình giao tới đâu rồi?", "Kiểm tra đơn hàng vừa đặt", "Hàng của mình gửi đi chưa?")
+6. "admin": Hỏi về báo cáo doanh thu, doanh số, thống kê kinh doanh, lợi nhuận, top sản phẩm bán chạy.
+   (Ví dụ: "Doanh thu tháng này thế nào?", "Bán được bao nhiêu đơn rồi?", "Sản phẩm nào bán chạy nhất?")
+7. "inventory": Hỏi về quản lý kho WMS, kiểm tra tồn kho chi tiết, cảnh báo hàng sắp hết, gợi ý nhập hàng.
+   (Ví dụ: "Trong kho còn bao nhiêu cái size L?", "Những mẫu nào đang dưới định mức an toàn cần nhập?")
+
+Trả về định dạng JSON:
+{"intent": "policy" | "promotion" | "stylist" | "catalog" | "order" | "admin" | "inventory", "reason": "giải thích ngắn gọn"}`
           },
           { role: 'user', content: message }
         ],
+        response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 10
+        max_tokens: 60
       });
-      const classified = response.choices[0].message.content.trim().toLowerCase();
+
+      const parsed = JSON.parse(response.choices[0].message.content);
+      const classified = (parsed.intent || '').toLowerCase().trim();
+
+      console.log(`[Supervisor AI] Semantic Reasoning: "${parsed.reason}" -> Intent: [${classified.toUpperCase()}]`);
+
       if (classified === 'admin') {
         return { intent: isAdmin ? 'admin' : 'admin_forbidden' };
       }
-      if (['stylist', 'catalog', 'order', 'policy'].includes(classified)) {
+      if (classified === 'inventory') {
+        return { intent: isAdmin ? 'inventory' : 'catalog' };
+      }
+      if (['policy', 'promotion', 'stylist', 'catalog', 'order'].includes(classified)) {
         return { intent: classified };
       }
     } catch (err) {
-      console.warn('[Orchestrator] LLM Intent classification fallback:', err.message);
+      console.warn('[Supervisor AI] LLM classification error, activating dynamic fallback:', err.message);
     }
   }
 
-  return { intent: 'stylist' }; // Default to stylist assistant
+  // =========================================================================
+  // 🛡️ TẦNG 2: DYNAMIC INTENT FALLBACK (KHI MẤT KẾT NỐI LLM HOẶC TIMEOUT)
+  // =========================================================================
+  if (/(doanh thu|danh thu|doanh số|danh so|doang thu|tong thu|tổng thu|báo cáo|bao cao|thống kê|thong ke|revenue|report|tổng tiền|tong tien|bán chạy|ban chay|lợi nhuận|loi nhuan|kinh doanh|bán được bao nhiêu|tiền thu được|bán được)/i.test(m)) {
+    return { intent: isAdmin ? 'admin' : 'admin_forbidden' };
+  }
+
+  if (/(sắp hết|sap het|hết hàng|het hang|cảnh báo kho|canh bao kho|low stock|cần nhập|can nhap|nhập hàng|nhap hang|reorder|tồn kho|ton kho|sổ kho|so kho|wms|kiểm kho|kiem kho)/i.test(m)) {
+    return { intent: isAdmin ? 'inventory' : 'catalog' };
+  }
+
+  if (/(đổi trả|doi tra|chính sách|chinh sach|bảo hành|bao hanh|hoàn tiền|hoan tien|trả hàng|tra hang|đổi hàng|doi hang|đổi size|doi size|giặt|giat|bảo quản|bao quan|hướng dẫn giặt|lụa|cashmere|bảng size|bang size|chọn size|chon size|tư vấn size|tu van size|số đo|so do|size s|size m|size l|size xl|size xxl|free size)/i.test(m)) {
+    return { intent: 'policy' };
+  }
+
+  if (/(voucher|mã giảm|ma giam|khuyến mãi|khuyen mai|mã ưu đãi|ma uu dai|coupon|discount|áp mã|ap ma|mã code|giam gia|giảm giá|phạm vi|scope|freeship|ưu đãi|uu dai)/i.test(m)) {
+    return { intent: 'promotion' };
+  }
+
+  if (/(đơn hàng|don hang|đơn gần nhất|don gan nhat|đơn mới nhất|don moi nhat|chi tiết đơn|chi tiet don|đơn vừa đặt|don vua dat|trạng thái đơn|trang thai don|mã đơn|ma don|tra cứu đơn|tra cuu don|kiểm tra đơn|kiem tra don|check đơn|xem đơn|lịch sử đơn|lich su don|giao hàng chưa|giao hang chua|tình trạng đơn|tinh trang don|vận chuyển đơn|van chuyen don|hủy đơn|huy don|đơn của|đơn số|đơn #|đơn 1|đơn 2|đơn 3)/i.test(m) || /(^|\s)(đơn|don)($|\s|#|[0-9]|[a-f])/i.test(m) || /#?[a-f0-9]{8}\b/i.test(m)) {
+    return { intent: 'order' };
+  }
+
+  if (/(phối đồ|phoi do|tư vấn phối|tu van phoi|set đồ|set do|outfit|mặc gì|mac gi|đi tiệc|di tiec|đi chơi|di choi|hẹn hò|hen ho|công sở|cong so|hợp với|hop voi|gợi ý outfit|goi y outfit|gợi ý set)/i.test(m)) {
+    return { intent: 'stylist' };
+  }
+
+  if (/(tìm|tim|có áo|co ao|có quần|co quan|có váy|co vay|có túi|co tui|giá bao nhiêu|gia bao nhieu|còn hàng|con hang|sản phẩm mới|san pham moi|mới nhất|moi nhat|xem áo|xem quần|xem túi)/i.test(m)) {
+    return { intent: 'catalog' };
+  }
+
+  return { intent: 'stylist' };
 }
 
 /**
@@ -137,6 +146,14 @@ async function processChatMessage({ userId, userRole = 'customer', message, sess
         reply:
           'Thông tin doanh thu và số liệu kinh doanh là dữ liệu nội bộ chỉ dành riêng cho tài khoản Quản trị viên. Bạn có thể hỏi mình về tư vấn trang phục, tìm kiếm sản phẩm hoặc kiểm tra đơn hàng cá nhân nhé!',
       };
+      break;
+
+    case 'inventory':
+      responsePayload = await inventoryAgent.handleInventoryInquiry({ userRole, query: message });
+      break;
+
+    case 'promotion':
+      responsePayload = await promotionAgent.handlePromotionInquiry({ userId, query: message });
       break;
 
     case 'order':

@@ -45,20 +45,26 @@ exports.createOrder = async (userId, orderData) => {
     }
     const items = Array.from(mergedMap.values());
 
-    // fetch variant + product info for all variants in one query (FOR UPDATE to lock stock)
+    // fetch variant + product + size stock info for all variants in one query (FOR UPDATE to lock stock)
     const variantIds = items.map(i => i.variant_id);
     const { rows: variantRows } = await client.query(
-      `SELECT pv.id AS variant_id, pv.product_id, pv.stock_qty, pv.sold_qty,
+      `SELECT pv.id AS variant_id, pv.product_id, pv.color_name, pv.sku,
+              pvs.id AS size_id, pvs.size_label, COALESCE(pvs.stock_qty, 0) AS stock_qty,
               p.name AS product_name, COALESCE(p.final_price, p.price)::numeric AS unit_price,
               p.is_flash_sale
        FROM product_variants pv
        JOIN products p ON p.id = pv.product_id
-       WHERE pv.id = ANY($1::uuid[]) FOR UPDATE`,
+       LEFT JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id
+       WHERE pv.id = ANY($1::uuid[])`,
       [variantIds]
     );
 
     const variantMap = new Map();
-    for (const v of variantRows) variantMap.set(String(v.variant_id), v);
+    for (const v of variantRows) {
+      if (!variantMap.has(String(v.variant_id))) {
+        variantMap.set(String(v.variant_id), v);
+      }
+    }
 
     // Khóa slot Flash Sale chiến dịch đang active (FOR UPDATE - chống overselling tuyệt đối)
     const productIds = Array.from(new Set(variantRows.map(v => v.product_id)));
@@ -84,8 +90,13 @@ exports.createOrder = async (userId, orderData) => {
       if (!v) {
         throw Object.assign(new Error(`Variant not found: ${it.variant_id}`), { status: 400 });
       }
-      if (v.stock_qty < it.quantity) {
-        throw Object.assign(new Error(`Sản phẩm "${v.product_name}" không đủ số lượng tồn kho (còn ${v.stock_qty}).`), { status: 400 });
+
+      const sizeMatch = variantRows.find(
+        r => String(r.variant_id) === String(it.variant_id) && (!it.size || r.size_label === it.size || r.size_label?.toLowerCase() === it.size?.toLowerCase())
+      );
+      const availableStock = sizeMatch ? sizeMatch.stock_qty : 0;
+      if (availableStock < it.quantity) {
+        throw Object.assign(new Error(`Sản phẩm "${v.product_name}" (Size ${it.size || 'Free'}) không đủ số lượng tồn kho (còn ${availableStock}).`), { status: 400 });
       }
 
       let unitPrice = Number(v.unit_price) || 0;
@@ -225,11 +236,21 @@ exports.createOrder = async (userId, orderData) => {
         [orderId, oi.variant_id, oi.qty, oi.unit_price, oi.name_snapshot, oi.color_snapshot, oi.size_snapshot, oi.final_price, oi.promo_applied]
       );
 
-      // update stock_qty and sold_qty
+      // update stock_qty and sold_qty in product_variant_sizes
+      if (oi.size_snapshot) {
+        await client.query(
+          `UPDATE product_variant_sizes
+           SET stock_qty = GREATEST(stock_qty - $1, 0),
+               sold_qty = COALESCE(sold_qty, 0) + $1,
+               updated_at = NOW()
+           WHERE variant_id = $2 AND (size_label = $3 OR size_label ILIKE $3)`,
+          [oi.qty, oi.variant_id, oi.size_snapshot]
+        );
+      }
+
       await client.query(
         `UPDATE product_variants
-         SET stock_qty = GREATEST(stock_qty - $1, 0),
-             sold_qty = COALESCE(sold_qty, 0) + $1,
+         SET sold_qty = COALESCE(sold_qty, 0) + $1,
              updated_at = NOW()
          WHERE id = $2`,
         [oi.qty, oi.variant_id]

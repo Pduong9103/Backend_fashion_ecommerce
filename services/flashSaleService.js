@@ -88,14 +88,6 @@ async function getCampaignById(id) {
               price: true,
               status: true,
               product_images: { select: { url: true } },
-              product_variants: {
-                select: {
-                  id: true,
-                  sku: true,
-                  color_name: true,
-                  stock_qty: true,
-                },
-              },
             },
           },
         },
@@ -411,8 +403,16 @@ async function getCurrentActiveFlashSale() {
                   id: true,
                   sku: true,
                   color_name: true,
-                  stock_qty: true,
+                  color_code: true,
                   sold_qty: true,
+                  product_variant_sizes: {
+                    select: {
+                      id: true,
+                      size_label: true,
+                      sku: true,
+                      stock_qty: true,
+                    },
+                  },
                 },
               },
               categories: { select: { id: true, name: true } },
@@ -428,8 +428,18 @@ async function getCurrentActiveFlashSale() {
   if (!campaign) {
     campaign = await prisma.flash_sale_campaigns.findFirst({
       where: {
-        status: 'scheduled',
-        start_time: { gt: now },
+        OR: [
+          { status: 'active' },
+          {
+            status: 'scheduled',
+            start_time: { lte: now },
+            end_time: { gt: now },
+          },
+          {
+            status: 'scheduled',
+            start_time: { gt: now },
+          },
+        ],
       },
       orderBy: { start_time: 'asc' },
       include: {
@@ -443,8 +453,16 @@ async function getCurrentActiveFlashSale() {
                     id: true,
                     sku: true,
                     color_name: true,
-                    stock_qty: true,
+                    color_code: true,
                     sold_qty: true,
+                    product_variant_sizes: {
+                      select: {
+                        id: true,
+                        size_label: true,
+                        sku: true,
+                        stock_qty: true,
+                      },
+                    },
                   },
                 },
                 categories: { select: { id: true, name: true } },
@@ -454,7 +472,9 @@ async function getCurrentActiveFlashSale() {
         },
       },
     });
-    if (campaign) isUpcoming = true;
+    if (campaign && new Date(campaign.start_time) > now) {
+      isUpcoming = true;
+    }
   }
 
   if (!campaign) {
@@ -469,8 +489,11 @@ async function getCurrentActiveFlashSale() {
     const p = item.product;
     const basePrice = Number(p.price || 0);
     const flashPrice = Number(item.flash_price || Math.round(basePrice * (1 - Number(item.discount_percent) / 100)));
-    const totalStock = p.product_variants.reduce((sum, v) => sum + (v.stock_qty || 0), 0);
-    const flashQuota = item.flash_quota > 0 ? item.flash_quota : totalStock;
+    const totalStock = (p.product_variants || []).reduce((sum, v) => {
+      const vSizesStock = (v.product_variant_sizes || []).reduce((sSum, sz) => sSum + (sz.stock_qty || 0), 0);
+      return sum + vSizesStock;
+    }, 0);
+    const flashQuota = item.flash_quota > 0 ? item.flash_quota : (totalStock > 0 ? totalStock : 10);
     const soldCount = item.sold_count || 0;
     const soldPercent = flashQuota > 0 ? Math.min(100, Math.round((soldCount / flashQuota) * 100)) : 0;
 

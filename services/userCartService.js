@@ -246,10 +246,10 @@ exports.getCart = async (userId) => {
                     ci.qty,
                     ci.price_snapshot,
                     ci.size_snapshot,
-                    pv.sku,
+                    COALESCE(pvs.sku, pv.sku) AS sku,
                     pv.color_name,
                     pv.sizes,
-                    pv.stock_qty,
+                    COALESCE(pvs.stock_qty, pv.stock_qty) AS stock_qty,
                     p.id AS product_id,
                     p.name AS product_name,
                     p.price AS product_price,
@@ -261,6 +261,7 @@ exports.getCart = async (userId) => {
                     (SELECT pi.url FROM product_images pi WHERE pi.variant_id = pv.id LIMIT 1) AS image_url
                 FROM cart_items ci
                 LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+                LEFT JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id AND (pvs.size_label = ci.size_snapshot OR pvs.size_label ILIKE ci.size_snapshot)
                 LEFT JOIN products p ON p.id = pv.product_id
                 LEFT JOIN suppliers s ON s.id = p.supplier_id
                 WHERE ci.cart_id = $1
@@ -418,6 +419,19 @@ exports.addItem = async (userId, variantId, qty = 1, size = null) => {
         }
         unitPrice = Math.round(unitPrice * 100) / 100;
 
+        // Check exact size stock from product_variant_sizes
+        if (size) {
+            const pvsRes = await client.query(
+                `SELECT stock_qty FROM product_variant_sizes WHERE variant_id = $1 AND (size_label = $2 OR size_label ILIKE $2) LIMIT 1`,
+                [variantId, size]
+            );
+            if (pvsRes.rows.length > 0 && Number(pvsRes.rows[0].stock_qty) < qty) {
+                const e = new Error(`Size "${size}" chỉ còn ${pvsRes.rows[0].stock_qty} sản phẩm trong kho`);
+                e.status = 400;
+                throw e;
+            }
+        }
+
         // check existing cart item for same variant + size
         const exist = await client.query(
             `SELECT id, qty FROM cart_items WHERE cart_id = $1 AND variant_id = $2 AND (size_snapshot IS NOT DISTINCT FROM $3) LIMIT 1`,
@@ -511,13 +525,14 @@ exports.updateItem = async (userId, itemId, options = {}) => {
         if (targetQty === 0) {
             await client.query(`DELETE FROM cart_items WHERE id = $1`, [itemId]);
         } else {
-            // Lấy thông tin stock_qty và giá của target variant
+            // Lấy thông tin stock_qty và giá của target variant và size
             const pvRes = await client.query(
-                `SELECT pv.id, pv.stock_qty, p.price, COALESCE(p.sale_percent, 0) AS sale_percent, p.is_flash_sale, p.final_price
+                `SELECT COALESCE(pvs.stock_qty, 0) AS stock_qty, p.price, COALESCE(p.sale_percent, 0) AS sale_percent, p.is_flash_sale, p.final_price
                  FROM product_variants pv
                  JOIN products p ON p.id = pv.product_id
+                 LEFT JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id AND (pvs.size_label = $2 OR pvs.size_label ILIKE $2)
                  WHERE pv.id = $1 LIMIT 1`,
-                [targetVariantId]
+                [targetVariantId, targetSize]
             );
             if (pvRes.rows.length === 0) {
                 throw Object.assign(new Error('Variant not found'), { status: 404 });

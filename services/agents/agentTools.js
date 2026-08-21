@@ -17,8 +17,8 @@ async function searchProductsDB({ query, category_name, color, min_price, max_pr
         c.name as category_name,
         c.id as category_id,
         s.name as supplier_name,
-        (SELECT pv.id FROM product_variants pv WHERE pv.product_id = p.id AND pv.stock_qty > 0 LIMIT 1) as variant_id,
-        (SELECT pv.color_name FROM product_variants pv WHERE pv.product_id = p.id AND pv.stock_qty > 0 LIMIT 1) as color_name,
+        (SELECT pv.id FROM product_variants pv JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id WHERE pv.product_id = p.id AND pvs.stock_qty > 0 LIMIT 1) as variant_id,
+        (SELECT pv.color_name FROM product_variants pv JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id WHERE pv.product_id = p.id AND pvs.stock_qty > 0 LIMIT 1) as color_name,
         COALESCE(
           (SELECT json_agg(json_build_object('url', pi.url)) FROM product_images pi WHERE pi.product_id = p.id),
           '[]'::json
@@ -49,7 +49,8 @@ async function searchProductsDB({ query, category_name, color, min_price, max_pr
     if (color && color.trim() !== '') {
       sql += ` AND EXISTS (
         SELECT 1 FROM product_variants pv 
-        WHERE pv.product_id = p.id AND pv.stock_qty > 0 AND pv.color_name ILIKE $${pIdx}
+        JOIN product_variant_sizes pvs ON pvs.variant_id = pv.id
+        WHERE pv.product_id = p.id AND pvs.stock_qty > 0 AND pv.color_name ILIKE $${pIdx}
       )`;
       params.push(`%${color.trim()}%`);
       pIdx++;
@@ -92,6 +93,9 @@ async function searchProductsDB({ query, category_name, color, min_price, max_pr
  * Gets user orders with status, shipping address, and item summary.
  */
 async function getUserOrdersDB({ userId, limit = 5 }) {
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId))) {
+    return [];
+  }
   const client = await pool.connect();
   try {
     const res = await client.query(`

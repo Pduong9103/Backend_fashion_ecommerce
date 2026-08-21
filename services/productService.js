@@ -107,7 +107,7 @@ exports.getProducts = async function ({
         }
 
         if(only_available){
-            where.push(`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.stock_qty > 0)`);
+            where.push(`EXISTS (SELECT 1 FROM product_variant_sizes pvs JOIN product_variants pv ON pvs.variant_id = pv.id WHERE pv.product_id = p.id AND pvs.stock_qty > 0)`);
         }
 
         let sql = '';
@@ -275,17 +275,30 @@ exports.createProduct = async (productData) => {
 
     // === 5. INSERT VARIANTS + IMAGES ===
     for (const variant of variants) {
-      const { sku, color_name, color_code, sizes, stock_qty, images: variantImages = [] } = variant;
-
-      // Insert variant
+      // Insert variant (3-tier normalized)
       const variantRes = await client.query(
         `INSERT INTO product_variants 
-         (product_id, sku, color_name, color_code, sizes, stock_qty)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+         (product_id, sku, color_name, color_code)
+         VALUES ($1, $2, $3, $4)
          RETURNING id`,
-        [productId, sku, color_name, color_code, JSON.stringify(sizes), stock_qty]
+        [productId, sku, color_name || null, color_code || null]
       );
       const variantId = variantRes.rows[0].id;
+
+      // Insert sizes into product_variant_sizes
+      if (Array.isArray(sizes) && sizes.length > 0) {
+        for (const sz of sizes) {
+          const sizeLabel = typeof sz === 'string' ? sz : (sz.size_label || sz.size || 'Free Size');
+          const sizeStock = typeof sz === 'object' && sz.stock_qty != null ? Number(sz.stock_qty) : Math.round(Number(stock_qty || 0) / sizes.length);
+          const sizeSku = `${sku}-${sizeLabel.replace(/\s+/g, '').toUpperCase()}`;
+          await client.query(
+            `INSERT INTO product_variant_sizes (variant_id, size_label, sku, stock_qty, sold_qty)
+             VALUES ($1, $2, $3, $4, 0)
+             ON CONFLICT (variant_id, size_label) DO UPDATE SET stock_qty = EXCLUDED.stock_qty, sku = EXCLUDED.sku`,
+            [variantId, sizeLabel, sizeSku, sizeStock]
+          );
+        }
+      }
 
       // Insert variant images
       if (variantImages.length > 0) {
@@ -334,8 +347,27 @@ exports.createProduct = async (productData) => {
                     'sku', pv.sku,
                     'color_name', pv.color_name,
                     'color_code', pv.color_code,
-                    'sizes', pv.sizes,
-                    'stock_qty', pv.stock_qty,
+                    'sizes', (
+                      SELECT COALESCE(
+                        json_agg(
+                          json_build_object(
+                            'id', pvs.id,
+                            'size', pvs.size_label,
+                            'size_label', pvs.size_label,
+                            'sku', pvs.sku,
+                            'stock_qty', pvs.stock_qty,
+                            'sold_qty', pvs.sold_qty
+                          ) ORDER BY pvs.id
+                        ), '[]'::json
+                      )
+                      FROM product_variant_sizes pvs
+                      WHERE pvs.variant_id = pv.id
+                    ),
+                    'stock_qty', (
+                      SELECT COALESCE(SUM(pvs.stock_qty), 0)
+                      FROM product_variant_sizes pvs
+                      WHERE pvs.variant_id = pv.id
+                    ),
                     'images', (
                       SELECT COALESCE(
                         json_agg(json_build_object('url', pi2.url) ORDER BY pi2.id),
@@ -559,10 +591,25 @@ exports.updateProduct = async (productId, data) => {
         //update variant info
         await client.query(
           `UPDATE product_variants
-           SET sku = $1, color_name = $2, color_code = $3, sizes = $4::jsonb, stock_qty = $5, updated_at = NOW()
-           WHERE id = $6`,
-          [sku, color_name || null, color_code || null, JSON.stringify(sizes), stock_qty, id]
+           SET sku = $1, color_name = $2, color_code = $3, updated_at = NOW()
+           WHERE id = $4`,
+          [sku, color_name || null, color_code || null, id]
         );
+
+        // sync sizes in product_variant_sizes
+        if (Array.isArray(sizes) && sizes.length > 0) {
+          for (const sz of sizes) {
+            const sizeLabel = typeof sz === 'string' ? sz : (sz.size_label || sz.size || 'Free Size');
+            const sizeStock = typeof sz === 'object' && sz.stock_qty != null ? Number(sz.stock_qty) : Math.round(Number(stock_qty || 0) / sizes.length);
+            const sizeSku = `${sku}-${sizeLabel.replace(/\s+/g, '').toUpperCase()}`;
+            await client.query(
+              `INSERT INTO product_variant_sizes (variant_id, size_label, sku, stock_qty, sold_qty)
+               VALUES ($1, $2, $3, $4, 0)
+               ON CONFLICT (variant_id, size_label) DO UPDATE SET stock_qty = EXCLUDED.stock_qty, sku = EXCLUDED.sku`,
+              [id, sizeLabel, sizeSku, sizeStock]
+            );
+          }
+        }
 
         //xóa ảnh cũ của variant này
         await client.query('DELETE FROM product_images WHERE variant_id = $1', [id]);
@@ -594,13 +641,28 @@ exports.updateProduct = async (productId, data) => {
         }
         const variantRes = await client.query(
           `INSERT INTO product_variants 
-           (product_id, sku, color_name, color_code, sizes, stock_qty)
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+           (product_id, sku, color_name, color_code)
+           VALUES ($1, $2, $3, $4)
            RETURNING id`,
-          [productId, sku, color_name || null, color_code || null, JSON.stringify(sizes), stock_qty]
+          [productId, sku, color_name || null, color_code || null]
         );
         const newVariantId = variantRes.rows[0].id;
         processedVariantIds.add(newVariantId.toString());
+
+        // sync sizes in product_variant_sizes
+        if (Array.isArray(sizes) && sizes.length > 0) {
+          for (const sz of sizes) {
+            const sizeLabel = typeof sz === 'string' ? sz : (sz.size_label || sz.size || 'Free Size');
+            const sizeStock = typeof sz === 'object' && sz.stock_qty != null ? Number(sz.stock_qty) : Math.round(Number(stock_qty || 0) / sizes.length);
+            const sizeSku = `${sku}-${sizeLabel.replace(/\s+/g, '').toUpperCase()}`;
+            await client.query(
+              `INSERT INTO product_variant_sizes (variant_id, size_label, sku, stock_qty, sold_qty)
+               VALUES ($1, $2, $3, $4, 0)
+               ON CONFLICT (variant_id, size_label) DO UPDATE SET stock_qty = EXCLUDED.stock_qty, sku = EXCLUDED.sku`,
+              [newVariantId, sizeLabel, sizeSku, sizeStock]
+            );
+          }
+        }
 
         //thêm ảnh mới
         if(vImages.length > 0){
@@ -714,8 +776,27 @@ exports.getProductById = async (productId) => {
               'sku', pv.sku,
               'color_name', pv.color_name,
               'color_code', pv.color_code,
-              'sizes', pv.sizes,
-              'stock_qty', pv.stock_qty,
+              'sizes', (
+                SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', pvs.id,
+                      'size', pvs.size_label,
+                      'size_label', pvs.size_label,
+                      'sku', pvs.sku,
+                      'stock_qty', pvs.stock_qty,
+                      'sold_qty', pvs.sold_qty
+                    ) ORDER BY pvs.id
+                  ), '[]'::json
+                )
+                FROM product_variant_sizes pvs
+                WHERE pvs.variant_id = pv.id
+              ),
+              'stock_qty', (
+                SELECT COALESCE(SUM(pvs.stock_qty), 0)
+                FROM product_variant_sizes pvs
+                WHERE pvs.variant_id = pv.id
+              ),
               'images', (
                 SELECT COALESCE(
                   json_agg(json_build_object('url', pi2.url) 

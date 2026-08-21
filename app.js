@@ -99,8 +99,11 @@ app.use('/api', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/user', userRoutes);
 app.use('/public', require('./routes/publicRoutes'));
-app.use('/payment', paymentsRoutes);
 app.use('/api', aiChatRoutes);
+app.use('/api', require('./routes/comboRoutes'));
+app.use('/public', require('./routes/comboRoutes'));
+app.use('/public', require('./routes/collectionRoutes'));
+app.use('/api', require('./routes/collectionRoutes'));
 
 // global rate limiter
 const globalLimiter = rateLimit({
